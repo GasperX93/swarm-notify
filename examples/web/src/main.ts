@@ -25,6 +25,7 @@ let bee: Bee
 let stamp: string
 let contractAddress: string
 let rpcUrl: string
+let fundedKey: string // optional funded private key for on-chain ops
 let alice: Panel
 let bob: Panel
 
@@ -118,6 +119,7 @@ $('btn-init').addEventListener('click', async () => {
   stamp = ($('cfg-stamp') as HTMLInputElement).value
   contractAddress = ($('cfg-contract') as HTMLInputElement).value
   rpcUrl = ($('cfg-rpc') as HTMLInputElement).value
+  fundedKey = ($('cfg-funded-key') as HTMLInputElement).value
 
   // Auto-fetch stamp if not provided
   if (!stamp) {
@@ -262,24 +264,47 @@ $('bob-read').addEventListener('click', () =>
 
 $('alice-notify').addEventListener('click', () =>
   withLoading('alice-notify', async () => {
-    const provider = createSigningProvider(rpcUrl, '0x' + bytesToHex(alice.privateKey))
+    // Use funded key if provided, otherwise Alice's random key
+    const signingKey = fundedKey || ('0x' + bytesToHex(alice.privateKey))
+    if (!fundedKey) {
+      logAlice('No funded key provided — using Alice\'s random key (likely has no xDAI)')
+    } else {
+      logAlice('Using funded key for on-chain transaction')
+    }
+
+    const provider = createSigningProvider(rpcUrl, signingKey)
     setResult('alice-notify-result', 'Sending tx to Gnosis Chain...', 'info')
 
-    const txHash = await alice.sendNotification(provider, contractAddress)
-    setResult('alice-notify-result', `Tx: <code>${short(txHash)}</code><br/>Waiting for confirmation...`, 'info')
+    try {
+      const txHash = await alice.sendNotification(provider, contractAddress)
+      setResult('alice-notify-result', `Tx: <code>${short(txHash)}</code><br/>Waiting for confirmation...`, 'info')
 
-    // Wait for mining
-    logAlice('Waiting for tx to be mined...')
-    const { JsonRpcProvider } = await import('ethers')
-    const ethProvider = new JsonRpcProvider(rpcUrl)
-    const receipt = await ethProvider.waitForTransaction(txHash, 1, 60000)
-    if (receipt) {
-      setResult(
-        'alice-notify-result',
-        `Tx: <code>${short(txHash)}</code><br/>Block: ${receipt.blockNumber}<br/>Gas: ${receipt.gasUsed.toString()}`,
-        'success',
-      )
-      logAlice(`Mined in block ${receipt.blockNumber} (${receipt.gasUsed.toString()} gas)`)
+      // Wait for mining
+      logAlice('Waiting for tx to be mined...')
+      const { JsonRpcProvider } = await import('ethers')
+      const ethProvider = new JsonRpcProvider(rpcUrl)
+      const receipt = await ethProvider.waitForTransaction(txHash, 1, 60000)
+      if (receipt) {
+        setResult(
+          'alice-notify-result',
+          `Tx: <code>${short(txHash)}</code><br/>Block: ${receipt.blockNumber}<br/>Gas: ${receipt.gasUsed.toString()}`,
+          'success',
+        )
+        logAlice(`Mined in block ${receipt.blockNumber} (${receipt.gasUsed.toString()} gas)`)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes('INSUFFICIENT_FUNDS') || msg.includes('insufficient funds')) {
+        setResult(
+          'alice-notify-result',
+          'Insufficient funds. Paste a funded private key (with xDAI on Gnosis Chain) in the "Funded Key" config field above, then re-initialize.',
+          'error',
+        )
+        logAlice('Transaction failed: wallet has no xDAI on Gnosis Chain')
+      } else {
+        setResult('alice-notify-result', `Error: ${escapeHtml(msg)}`, 'error')
+      }
+      throw err // re-throw so withLoading also logs it
     }
   }, 'alice-notify-result'),
 )

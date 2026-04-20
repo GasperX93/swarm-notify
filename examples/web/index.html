@@ -15,6 +15,7 @@
       <label>Stamp <input id="cfg-stamp" type="text" placeholder="auto-detected from Bee node" /></label>
       <label>Contract <input id="cfg-contract" type="text" value="0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf" /></label>
       <label>RPC <input id="cfg-rpc" type="text" value="https://rpc.gnosischain.com" /></label>
+      <label>Funded Key <input id="cfg-funded-key" type="password" placeholder="optional — for on-chain notifications" /></label>
       <button id="btn-init">Initialize</button>
       <span id="init-status"></span>
     </div>
@@ -102,8 +103,11 @@
           Only needed for <strong>first contact</strong> — subsequent messages are found via feeds.
           Cost: ~22,000 gas (~0.00002 xDAI).
           <br/><br/>
-          <strong>Note:</strong> This requires the sender's wallet to have xDAI on Gnosis Chain.
-          The demo generates fresh keys with no funds, so this step will fail unless you fund Alice's address.
+          <strong>Wallet:</strong> Requires xDAI on Gnosis Chain. Paste a funded private key in
+          the "Funded Key" config field above. If empty, uses Alice's random key (will fail — no funds).
+          <br/><br/>
+          <strong>In production:</strong> The host app (e.g. Nook) uses the Bee node's wallet, which
+          already holds xBZZ/xDAI for postage stamps. No separate funding needed.
         </div>
       </div>
 
