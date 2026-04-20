@@ -216,6 +216,20 @@ echo "DEPLOYER_PRIVATE_KEY=0x..." > .env
 npm run deploy -- --network gnosis
 ```
 
+## CLI Reference App
+
+A CLI tool for testing and demoing the full library. See [`examples/README.md`](./examples/README.md) for detailed usage.
+
+```bash
+# Quick start
+export PRIVATE_KEY=0x... BEE_URL=http://localhost:1633 STAMP=<batch-id>
+
+npm run cli -- identity publish
+npm run cli -- contacts add 0x... "Alice"
+npm run cli -- mailbox send 0x... -s "Hello" -b "Hi Alice!"
+npm run cli -- registry poll
+```
+
 ## Contributing
 
 - Every PR must include tests for new functionality

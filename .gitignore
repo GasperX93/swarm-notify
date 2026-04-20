@@ -7,6 +7,9 @@ dist/
 .env
 .env.*
 
+# CLI local data
+data/
+
 # Hardhat
 artifacts/
 cache/
