@@ -156,6 +156,27 @@ interface EncryptedData {
   ciphertext: Uint8Array
   nonce: Uint8Array          // 12 bytes, random per encryption
 }
+
+// ─── Framework-agnostic provider (registry module) ──────────────
+// Host app wraps its own ethers/web3/viem provider into this interface.
+// Works with ethers v5, v6, viem, or raw fetch — library doesn't care.
+
+interface NotifyProvider {
+  getLogs(filter: {
+    address: string
+    topics: string[]
+    fromBlock: number
+    toBlock?: number | 'latest'
+  }): Promise<{ data: string; blockNumber: number }[]>
+
+  call(tx: { to: string; data: string }): Promise<string>  // eth_call for read-only
+
+  sendTransaction(tx: {
+    to: string
+    data: string
+    value?: string           // hex wei, default "0x0"
+  }): Promise<string>        // returns txHash
+}
 ```
 
 ## Module API Surface
@@ -173,8 +194,9 @@ function eciesDecrypt(blob: Uint8Array, myPrivateKey: Uint8Array): Uint8Array
 
 function publish(bee: Bee, signer: Signer, stamp: string, identity: SwarmIdentity): Promise<void>
 function resolve(bee: Bee, ethAddress: string): Promise<SwarmIdentity | null>
-function resolveByENS(provider: Provider, ensName: string): Promise<SwarmIdentity | null>
 function feedTopic(ethAddress: string): string  // returns keccak256("swarm-identity-" + ethAddress)
+// NOTE: ENS resolution is NOT in this library — host app resolves ENS → ETH address,
+// then calls resolve(bee, ethAddress). Keeps the library framework-agnostic.
 
 // ─── mailbox.ts ──────────────────────────────────────────────────
 
@@ -189,12 +211,15 @@ function add(ethAddress: string, nickname: string, identity: SwarmIdentity): Con
 function remove(ethAddress: string): void
 function list(): Contact[]
 function update(ethAddress: string, changes: Partial<Pick<Contact, 'nickname' | 'overlay' | 'walletPublicKey' | 'beePublicKey'>>): Contact
-function importFromGranteeLabels(labels: Record<string, string>, bee: Bee): Promise<Contact[]>
+// NOTE: importFromGranteeLabels is NOT in this library — it's Nook-specific.
+// Host apps import contacts however they want, then call contacts.add().
 
 // ─── registry.ts ─────────────────────────────────────────────────
+// Uses NotifyProvider (framework-agnostic) — NOT ethers Provider directly.
+// Host app wraps its own provider. See NotifyProvider interface above.
 
-function sendNotification(provider: Provider, recipientEthAddress: string, payload: NotificationPayload, senderPrivateKey: Uint8Array): Promise<string>  // returns txHash
-function pollNotifications(provider: Provider, myEthAddress: string, myPrivateKey: Uint8Array, fromBlock?: number): Promise<{ payload: NotificationPayload; blockNumber: number }[]>
+function sendNotification(provider: NotifyProvider, recipientEthAddress: string, payload: NotificationPayload, senderPrivateKey: Uint8Array): Promise<string>  // returns txHash
+function pollNotifications(provider: NotifyProvider, myEthAddress: string, myPrivateKey: Uint8Array, fromBlock?: number): Promise<{ payload: NotificationPayload; blockNumber: number }[]>
 function recipientHash(ethAddress: string): string  // returns keccak256(ethAddress)
 ```
 
@@ -207,7 +232,7 @@ src/
   identity.ts       Publish/resolve identity feeds — depends on crypto, bee-js
   mailbox.ts        Send/receive messages — depends on crypto, identity, bee-js
   contacts.ts       Contact CRUD — depends on types only
-  registry.ts       Gnosis Chain notification contract — depends on crypto, ethers
+  registry.ts       Gnosis Chain notification contract — depends on crypto + NotifyProvider (no ethers)
   index.ts          Public API: re-exports { identity, mailbox, contacts, crypto, registry }
 
 contracts/
@@ -234,7 +259,7 @@ mailbox.ts (depends on: crypto, identity, bee-js)
   ↑
 contacts.ts (depends on: types only — pure CRUD)
 
-registry.ts (depends on: crypto, ethers — no Swarm dependency)
+registry.ts (depends on: crypto, NotifyProvider interface — no ethers, no Swarm dependency)
 ```
 
 ## Coding Conventions
@@ -247,7 +272,7 @@ registry.ts (depends on: crypto, ethers — no Swarm dependency)
 - `bee-js` is the only Swarm dependency — no direct HTTP calls to Bee
 - `@noble/secp256k1` for elliptic curve operations
 - Web Crypto API for AES-256-GCM (browser-native, fast)
-- `ethers` v5 for Gnosis Chain interaction (matching Nook)
+- **No ethers dependency** — registry uses `NotifyProvider` interface. Host app provides the adapter.
 - Export everything through `src/index.ts` — no deep imports
 
 ## Key Design Decisions
@@ -261,6 +286,71 @@ registry.ts (depends on: crypto, ethers — no Swarm dependency)
 4. **Application-level encryption, not ACT.** Messages are encrypted with ECDH+AES-GCM before upload. Bee sees raw bytes. Simpler, more portable, no ACT headers needed. Trade-off: no protocol-level revocation.
 
 5. **Notification registry is permissionless.** Anyone can call `notify()`. Spam defense is decryption filtering — junk notifications fail ECIES decrypt and are silently discarded.
+
+6. **Framework-agnostic — no ethers, no web3, no viem.** The registry module accepts a `NotifyProvider` interface, not a specific library's provider. Host apps wrap their own provider (ethers v5, v6, viem, raw fetch — whatever they use). This lets any Swarm app integrate without dependency conflicts.
+
+7. **ENS resolution is the host app's job.** The library works with ETH addresses only. If the host app supports ENS, it resolves the name and passes the address. This avoids pulling in ethers/viem just for name resolution.
+
+8. **Contact import is the host app's job.** The library provides `contacts.add()` but not app-specific import methods like `importFromGranteeLabels`. Each app imports contacts its own way.
+
+## Integration Guide
+
+Any Swarm app can integrate Swarm Notify. The library needs two things from the host:
+
+### 1. Bee connection (bee-js)
+```typescript
+import { Bee } from '@ethersphere/bee-js'
+const bee = new Bee('http://localhost:1633')
+```
+
+### 2. NotifyProvider (for registry / on-chain notifications)
+Wrap your app's blockchain library:
+
+```typescript
+// ethers v5 example (Nook)
+import { ethers } from 'ethers'
+const provider = new ethers.providers.JsonRpcProvider('https://rpc.gnosischain.com')
+const wallet = new ethers.Wallet(privateKey, provider)
+
+const notifyProvider: NotifyProvider = {
+  getLogs: (filter) => provider.getLogs(filter),
+  call: (tx) => provider.call(tx),
+  sendTransaction: (tx) => wallet.sendTransaction(tx).then(r => r.hash),
+}
+
+// ethers v6 example (Swarm Desktop)
+import { JsonRpcProvider, Wallet } from 'ethers'
+const provider = new JsonRpcProvider('https://rpc.gnosischain.com')
+const wallet = new Wallet(privateKey, provider)
+
+const notifyProvider: NotifyProvider = {
+  getLogs: (filter) => provider.getLogs(filter),
+  call: (tx) => provider.call(tx),
+  sendTransaction: (tx) => wallet.sendTransaction(tx).then(r => r.hash),
+}
+
+// viem example
+import { createPublicClient, createWalletClient, http } from 'viem'
+import { gnosis } from 'viem/chains'
+const public = createPublicClient({ chain: gnosis, transport: http() })
+const wallet = createWalletClient({ chain: gnosis, transport: http(), account })
+
+const notifyProvider: NotifyProvider = {
+  getLogs: (filter) => public.getLogs(filter),
+  call: (tx) => public.call(tx),
+  sendTransaction: (tx) => wallet.sendTransaction(tx),
+}
+```
+
+### 3. Signer (bee-js Signer interface)
+The library uses bee-js's standard `Signer` type for feed operations. Host apps provide this from their key management — wallet-derived, Bee node key, or any secp256k1 key pair.
+
+### 4. ENS (optional, host app handles)
+```typescript
+// Host app resolves ENS → ETH address, then passes to library
+const ethAddress = await myApp.resolveENS('alice.eth')
+const identity = await swarmNotify.identity.resolve(bee, ethAddress)
+```
 
 ## Nook Integration
 
