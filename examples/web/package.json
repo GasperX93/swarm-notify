@@ -1,0 +1,23 @@
+{
+  "name": "swarm-notify-web-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "@ethersphere/bee-js": "^11.1.1",
+    "@noble/hashes": "^1.7.2",
+    "@noble/secp256k1": "^2.2.3",
+    "ethers": "^6.16.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}

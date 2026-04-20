@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Swarm Notify — Interactive Demo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Swarm Notify <span class="subtitle">Interactive Demo</span></h1>
+    <p class="tagline">Encrypted notifications and messaging on Swarm — no servers, no cloud, no accounts.</p>
+    <div class="config">
+      <label>Bee URL <input id="cfg-bee" type="text" value="http://localhost:1633" /></label>
+      <label>Stamp <input id="cfg-stamp" type="text" placeholder="postage batch ID" /></label>
+      <label>Contract <input id="cfg-contract" type="text" value="0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf" /></label>
+      <label>RPC <input id="cfg-rpc" type="text" value="https://rpc.gnosischain.com" /></label>
+      <button id="btn-init">Initialize</button>
+      <span id="init-status"></span>
+    </div>
+  </header>
+
+  <main class="split">
+    <!-- ─── ALICE ──────────────────────────────────── -->
+    <section id="alice" class="panel">
+      <h2>Alice</h2>
+      <div class="identity-info">
+        <span class="label">ETH:</span> <code id="alice-eth">—</code><br/>
+        <span class="label">PubKey:</span> <code id="alice-pub">—</code>
+      </div>
+
+      <!-- Step 1: Publish Identity -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">1</span>
+          <h3>Publish Identity</h3>
+        </div>
+        <div class="card-body">
+          <button id="alice-publish" disabled>Publish to Swarm</button>
+          <div id="alice-publish-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          Publishes your public keys and overlay to a Swarm feed at topic
+          <code>keccak256("swarm-identity-" + ethAddress)</code>. Plaintext — public by design.
+          This is how others discover your encryption keys.
+        </div>
+      </div>
+
+      <!-- Step 2: Discover Bob -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">2</span>
+          <h3>Discover Bob</h3>
+        </div>
+        <div class="card-body">
+          <button id="alice-resolve" disabled>Resolve Bob's Identity</button>
+          <div id="alice-resolve-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          Reads Bob's identity feed to get his public key. You need this for
+          <strong>ECDH key exchange</strong> — it lets you derive a shared encryption secret
+          without ever transmitting a key.
+        </div>
+      </div>
+
+      <!-- Step 3: Send Message -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">3</span>
+          <h3>Send Message to Bob</h3>
+        </div>
+        <div class="card-body">
+          <input id="alice-msg-subject" type="text" placeholder="Subject" disabled />
+          <textarea id="alice-msg-body" placeholder="Message body..." disabled></textarea>
+          <button id="alice-send" disabled>Send</button>
+          <div id="alice-send-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          <strong>ECDH</strong> derives a shared secret from Alice's private key + Bob's public key.
+          <strong>AES-256-GCM</strong> encrypts the message. The encrypted blob is uploaded to Swarm
+          and the mailbox feed is updated. Only Alice and Bob can derive this key — neither party ever sends it.
+        </div>
+      </div>
+
+      <!-- Step 5: Send Notification -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">5</span>
+          <h3>Notify Bob (On-Chain)</h3>
+        </div>
+        <div class="card-body">
+          <button id="alice-notify" disabled>Send Notification</button>
+          <div id="alice-notify-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          <strong>ECIES-encrypts</strong> <code>{sender, overlay, feedTopic}</code> with Bob's public key.
+          Emits a <code>Notification</code> event on Gnosis Chain. Only needed for <strong>first contact</strong>
+          — subsequent messages are found via feeds. Cost: ~22,000 gas (~0.00002 xDAI).
+        </div>
+      </div>
+
+      <!-- Step 7: Check Inbox -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">7</span>
+          <h3>Check Inbox</h3>
+        </div>
+        <div class="card-body">
+          <button id="alice-inbox" disabled>Check Inbox</button>
+          <div id="alice-inbox-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          Reads Bob's mailbox feed (Bob→Alice), derives the shared secret, and decrypts.
+          This shows the reply from the other side.
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── BOB ────────────────────────────────────── -->
+    <section id="bob" class="panel">
+      <h2>Bob</h2>
+      <div class="identity-info">
+        <span class="label">ETH:</span> <code id="bob-eth">—</code><br/>
+        <span class="label">PubKey:</span> <code id="bob-pub">—</code>
+      </div>
+
+      <!-- Step 1: Publish Identity -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">1</span>
+          <h3>Publish Identity</h3>
+        </div>
+        <div class="card-body">
+          <button id="bob-publish" disabled>Publish to Swarm</button>
+          <div id="bob-publish-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          Same operation for Bob. Both identities are now discoverable by ETH address on Swarm.
+          Anyone can read the feed — privacy comes from encryption, not access control.
+        </div>
+      </div>
+
+      <!-- Step 2: Discover Alice -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">2</span>
+          <h3>Discover Alice</h3>
+        </div>
+        <div class="card-body">
+          <button id="bob-resolve" disabled>Resolve Alice's Identity</button>
+          <div id="bob-resolve-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          Same in reverse. Both now have each other's public keys — ready for encrypted communication.
+          No key exchange server needed.
+        </div>
+      </div>
+
+      <!-- Step 4: Read Message -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">4</span>
+          <h3>Read Messages from Alice</h3>
+        </div>
+        <div class="card-body">
+          <button id="bob-read" disabled>Check Inbox</button>
+          <div id="bob-read-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          Reads Alice's mailbox feed from Swarm. Derives the <strong>same shared secret</strong>
+          using Bob's private key + Alice's public key (ECDH is symmetric). Decrypts with AES-256-GCM.
+          <strong>Neither party ever sent the key!</strong>
+        </div>
+      </div>
+
+      <!-- Step 6: Poll Notifications -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">6</span>
+          <h3>Poll Notifications</h3>
+        </div>
+        <div class="card-body">
+          <button id="bob-poll" disabled>Poll Registry</button>
+          <div id="bob-poll-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          Queries Gnosis Chain for <code>Notification</code> events matching
+          <code>keccak256(bobAddress)</code>. <strong>ECIES-decrypts</strong> each with Bob's private key.
+          Failed decryptions (spam or not for you) are silently discarded.
+          This is how you discover new contacts — no server needed.
+        </div>
+      </div>
+
+      <!-- Step 7: Reply -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">7</span>
+          <h3>Reply to Alice</h3>
+        </div>
+        <div class="card-body">
+          <input id="bob-msg-subject" type="text" placeholder="Subject" disabled />
+          <textarea id="bob-msg-body" placeholder="Message body..." disabled></textarea>
+          <button id="bob-send" disabled>Send Reply</button>
+          <div id="bob-send-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          Bob sends an encrypted reply. Same ECDH + AES-256-GCM flow, but on Bob's own mailbox feed
+          (Bob→Alice). Two feeds per conversation — each owned by the sender.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="log-header">
+      <h3>Event Log</h3>
+      <span class="log-hint">Technical details of every operation</span>
+      <button id="log-clear">Clear</button>
+    </div>
+    <div id="event-log"></div>
+  </footer>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
