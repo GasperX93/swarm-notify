@@ -272,6 +272,10 @@ registry.ts (depends on: crypto, NotifyProvider interface — no ethers, no Swar
 - PRs to `main` require approval from **@GasperX93**.
 - Branch naming: `feature/<issue-number>-<short-description>` or `fix/<issue-number>-<short-description>`.
 
+## Maintenance Notes
+
+- If `contracts/SwarmNotificationRegistry.sol` changes, update the ABI and key values table in `README.md` to match.
+
 ## Coding Conventions
 
 - TypeScript strict mode
