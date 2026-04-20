@@ -262,6 +262,14 @@ contacts.ts (depends on: types only — pure CRUD)
 registry.ts (depends on: crypto, NotifyProvider interface — no ethers, no Swarm dependency)
 ```
 
+## Git Workflow
+
+- **Never commit directly to `main`.** All work happens on feature branches.
+- Create branches from `development` (not `main`).
+- Merge finished work back into `development`.
+- PRs to `main` require approval from **@GasperX93**.
+- Branch naming: `feature/<issue-number>-<short-description>` or `fix/<issue-number>-<short-description>`.
+
 ## Coding Conventions
 
 - TypeScript strict mode
