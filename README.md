@@ -152,9 +152,48 @@ test/
 
 ## Deployed Contracts
 
-| Network | Address | Explorer |
-|---------|---------|----------|
-| Gnosis Chain | `0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf` | [Gnosisscan](https://gnosisscan.io/address/0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf) |
+| Network | Chain ID | Address | Explorer |
+|---------|----------|---------|----------|
+| Gnosis Chain | 100 | `0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf` | [Gnosisscan](https://gnosisscan.io/address/0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf) |
+
+### Contract ABI
+
+The contract has a single function and a single event:
+
+```json
+[
+  {
+    "type": "function",
+    "name": "notify",
+    "inputs": [
+      { "name": "recipientHash", "type": "bytes32", "indexed": false },
+      { "name": "encryptedPayload", "type": "bytes", "indexed": false }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "Notification",
+    "inputs": [
+      { "name": "recipientHash", "type": "bytes32", "indexed": true },
+      { "name": "encryptedPayload", "type": "bytes", "indexed": false }
+    ]
+  }
+]
+```
+
+**Key values:**
+| Item | Value |
+|------|-------|
+| Function selector (`notify`) | `0xe0bed146` |
+| Event topic (`Notification`) | `0xec0eaa67688a36c9864d6ae20470643e6995c84aad33e725bdc9cb72d22fa810` |
+| `recipientHash` | `keccak256(ethAddress)` — 20-byte address, not checksummed string |
+| `encryptedPayload` | ECIES-encrypted JSON `{ sender, overlay, feedTopic }` |
+| Gas cost per notification | ~22,000 gas (~0.00002 xDAI on Gnosis Chain) |
+| Querying (getLogs) | Free (read-only) |
+
+The full compiled ABI is also available at `artifacts/contracts/SwarmNotificationRegistry.sol/SwarmNotificationRegistry.json` after running `npm run compile:contracts`.
 
 ## Development
 
