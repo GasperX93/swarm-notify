@@ -73,11 +73,11 @@ program
 
 // ─── Identity ───────────────────────────────────────────────────
 
-const identityCmd = program.command('identity').description('Identity feed operations')
+const identityCmd = program.command('identity').description('Publish and resolve identity feeds on Swarm (Layer 1)')
 
 identityCmd
   .command('publish')
-  .description('Publish your identity to a Swarm feed')
+  .description('Publish your identity (public keys + overlay) to a Swarm feed. One-time setup — others can then discover you by ETH address.')
   .option('--overlay <hex>', 'Override overlay address (default: fetched from Bee node)')
   .action(async (opts) => {
     const privKey = getPrivateKey()
@@ -113,7 +113,7 @@ identityCmd
 
 identityCmd
   .command('resolve')
-  .description('Resolve an identity by ETH address')
+  .description('Look up someone\'s identity (public keys + overlay) from their Swarm feed')
   .argument('<ethAddress>', 'ETH address to look up')
   .action(async (ethAddress: string) => {
     const bee = new Bee(BEE_URL)
@@ -130,11 +130,11 @@ identityCmd
 
 // ─── Contacts ───────────────────────────────────────────────────
 
-const contactsCmd = program.command('contacts').description('Contact management')
+const contactsCmd = program.command('contacts').description('Manage local address book (stored in ./data/contacts/)')
 
 contactsCmd
   .command('add')
-  .description('Add a contact (resolves identity from Swarm)')
+  .description('Add a contact — resolves their identity from Swarm, or pass keys manually with --wallet-pub and --overlay')
   .argument('<ethAddress>', 'ETH address')
   .argument('<nickname>', 'Display name')
   .option('--wallet-pub <hex>', 'Manually provide wallet public key (skip identity resolve)')
@@ -190,11 +190,11 @@ contactsCmd
 
 // ─── Mailbox ────────────────────────────────────────────────────
 
-const mailboxCmd = program.command('mailbox').description('Send and receive messages')
+const mailboxCmd = program.command('mailbox').description('Send and receive E2E encrypted messages via Swarm feeds (Layer 2)')
 
 mailboxCmd
   .command('send')
-  .description('Send an encrypted message to a contact')
+  .description('Send an ECDH+AES-256-GCM encrypted message to a contact via their Swarm mailbox feed')
   .argument('<ethAddress>', 'Recipient ETH address (must be in contacts)')
   .requiredOption('-s, --subject <text>', 'Message subject')
   .requiredOption('-b, --body <text>', 'Message body')
@@ -305,11 +305,11 @@ mailboxCmd
 
 // ─── Registry ───────────────────────────────────────────────────
 
-const registryCmd = program.command('registry').description('On-chain notification registry')
+const registryCmd = program.command('registry').description('On-chain notification registry on Gnosis Chain (Layer 3) — for first-contact discovery')
 
 registryCmd
   .command('notify')
-  .description('Send a first-contact notification (on-chain)')
+  .description('Send ECIES-encrypted first-contact notification on Gnosis Chain (~22k gas). Only needed once per new contact.')
   .argument('<ethAddress>', 'Recipient ETH address (must be in contacts)')
   .action(async (ethAddress: string) => {
     const privKey = getPrivateKey()
@@ -350,7 +350,7 @@ registryCmd
 
 registryCmd
   .command('poll')
-  .description('Poll for new notifications')
+  .description('Poll Gnosis Chain for incoming notifications — discovers new contacts who messaged you')
   .option('--from-block <n>', 'Start block (default: 0)', '0')
   .action(async (opts) => {
     const privKey = getPrivateKey()

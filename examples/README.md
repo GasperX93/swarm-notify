@@ -2,6 +2,107 @@
 
 A CLI tool that exercises every module in the library. Used for manual testing, demos, and as an integration example.
 
+## How It Works
+
+The flow diagram below shows the full lifecycle of a first-contact notification and subsequent messaging between two users (Alice and Bob). Each step maps to a CLI command.
+
+```
+ ALICE                                                              BOB
+ ─────                                                              ───
+
+ 1. PUBLISH IDENTITY                                    1. PUBLISH IDENTITY
+ ┌────────────────────┐                                ┌────────────────────┐
+ │ identity publish   │                                │ identity publish   │
+ │                    │                                │                    │
+ │ Writes to Swarm    │                                │ Writes to Swarm    │
+ │ feed at topic:     │                                │ feed at topic:     │
+ │ keccak256(         │                                │ keccak256(         │
+ │  "swarm-identity-" │                                │  "swarm-identity-" │
+ │  + ethAddress)     │                                │  + ethAddress)     │
+ └────────────────────┘                                └────────────────────┘
+          │                                                      │
+          ▼                                                      ▼
+ 2. DISCOVER + ADD CONTACT                             2. DISCOVER + ADD CONTACT
+ ┌────────────────────┐    read Bob's identity feed    ┌────────────────────┐
+ │ identity resolve   │◄──────────── Swarm ──────────►│ identity resolve   │
+ │ contacts add       │                                │ contacts add       │
+ └────────────────────┘                                └────────────────────┘
+          │                                                      │
+          ▼                                                      │
+ 3. SEND MESSAGE                                                 │
+ ┌────────────────────┐                                          │
+ │ mailbox send       │                                          │
+ │                    │                                          │
+ │ ECDH shared secret │                                          │
+ │ → AES-256-GCM      │                                          │
+ │ → upload to Swarm  │                                          │
+ │ → update feed      │                                          │
+ └────────────────────┘                                          │
+          │                                                      │
+          ▼                                                      │
+ 4. FIRST-CONTACT NOTIFICATION (on-chain)                        │
+ ┌────────────────────┐                                          │
+ │ registry notify    │                                          │
+ │                    │    Gnosis Chain tx:                       │
+ │ ECIES-encrypt      │    notify(keccak256(bobAddr),            │
+ │ {sender, overlay,  │──────── encryptedPayload) ──────────►   │
+ │  feedTopic}        │                                          │
+ │ with Bob's pubkey  │                                          │
+ └────────────────────┘                                          │
+                                                                 ▼
+                                                        5. POLL NOTIFICATIONS
+                                                       ┌────────────────────┐
+                                                       │ registry poll      │
+                                                       │                    │
+                                                       │ eth_getLogs →      │
+                                                       │ ECIES-decrypt →    │
+                                                       │ discover Alice's   │
+                                                       │ {sender, overlay,  │
+                                                       │  feedTopic}        │
+                                                       └────────────────────┘
+                                                                 │
+                                                                 ▼
+                                                        6. READ MESSAGES
+                                                       ┌────────────────────┐
+                                                       │ mailbox read       │
+                                                       │                    │
+                                                       │ Read Alice's feed →│
+                                                       │ ECDH shared secret │
+                                                       │ → AES-GCM decrypt  │
+                                                       │ → "Project files"  │
+                                                       └────────────────────┘
+                                                                 │
+                                                                 ▼
+                                                        7. REPLY
+                                                       ┌────────────────────┐
+                                                       │ mailbox send       │
+                                                       │                    │
+ 8. CHECK INBOX                                        │ Encrypt + upload   │
+ ┌────────────────────┐                                │ to Bob→Alice feed  │
+ │ mailbox inbox      │◄───────── Swarm ──────────────│                    │
+ │                    │                                └────────────────────┘
+ │ "Re: Project files"│
+ │ "Got it, thanks!"  │
+ └────────────────────┘
+```
+
+### Encryption Summary
+
+| Layer | Method | When |
+|-------|--------|------|
+| Messages (mailbox) | **ECDH + AES-256-GCM** — symmetric, both parties derive same key | Between known contacts |
+| Notifications (registry) | **ECIES** — asymmetric, encrypt with recipient's public key | First contact only |
+| Identity feeds | Plaintext JSON on Swarm | Public by design |
+
+### What's On-Chain vs Off-Chain
+
+| Data | Where | Cost |
+|------|-------|------|
+| Identity (public keys, overlay) | **Swarm** feeds | Postage stamp |
+| Messages (encrypted) | **Swarm** feeds | Postage stamp |
+| Contacts | **Local** storage | Free |
+| First-contact notifications | **Gnosis Chain** events | ~22k gas (~0.00002 xDAI) |
+
 ## Prerequisites
 
 - Node.js 18+
