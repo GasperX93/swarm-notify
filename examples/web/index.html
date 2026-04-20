@@ -10,6 +10,15 @@
   <header>
     <h1>Swarm Notify <span class="subtitle">Interactive Demo</span></h1>
     <p class="tagline">Encrypted notifications and messaging on Swarm — no servers, no cloud, no accounts.</p>
+    <div class="overview-box">
+      <strong>How discovery works:</strong>
+      If you already know someone's ETH address (shared via chat, website, QR code), you can look up their
+      public keys on Swarm and start messaging immediately — <strong>no blockchain needed</strong>.
+      The on-chain notification registry (steps 6) is only for <em>first-contact discovery</em>:
+      when a stranger sends you a message and you need a way to find out they exist. Think of it like
+      email vs. a phone book — you can email someone directly if you have their address, but the phone book
+      helps strangers find you.
+    </div>
     <div class="config">
       <label>Bee URL <input id="cfg-bee" type="text" value="http://localhost:1633" /></label>
       <label>Stamp <input id="cfg-stamp" type="text" placeholder="auto-detected from Bee node" /></label>
@@ -41,11 +50,16 @@
           <div id="alice-publish-result" class="result"></div>
         </div>
         <div class="card-info">
-          Publishes Alice's public keys and overlay to a Swarm feed at topic
+          <strong>What:</strong> Writes Alice's public keys (for encryption) and overlay address (for feed routing)
+          to a Swarm feed. The feed is at a deterministic topic:
           <code>keccak256("swarm-identity-" + ethAddress)</code>.
-          The data is plaintext — <strong>public by design</strong>.
-          Anyone who knows Alice's ETH address can read this feed and get her encryption keys.
-          Think of publishing your ETH address like sharing an email address.
+          <br/><br/>
+          <strong>Why:</strong> So anyone who knows Alice's ETH address can look up her encryption keys on Swarm.
+          This is the foundation — without published keys, nobody can encrypt messages to you.
+          <br/><br/>
+          <strong>Privacy:</strong> The identity feed is plaintext — <strong>public by design</strong>.
+          This is intentional: your public key must be public for others to encrypt data for you.
+          The actual messages are encrypted separately (step 4).
         </div>
       </div>
 
@@ -60,10 +74,16 @@
           <div id="alice-resolve-result" class="result"></div>
         </div>
         <div class="card-info">
-          Alice looks up Bob's ETH address on Swarm to find his public key.
-          In this demo, both addresses are visible on screen. In production,
-          you'd share your ETH address the same way you share an email — paste it in a chat, put it on your website, or scan a QR code.
-          Alice needs Bob's public key for <strong>ECDH key exchange</strong>.
+          <strong>What:</strong> Alice reads Bob's identity feed from Swarm using his ETH address.
+          She now has Bob's public key and overlay address — everything needed to send him encrypted messages.
+          <br/><br/>
+          <strong>How does Alice know Bob's address?</strong> The same way you know someone's email:
+          it was shared out-of-band — in a chat, on a website, via QR code, or in a contact directory.
+          In this demo, both addresses are visible on screen.
+          <br/><br/>
+          <strong>What this enables:</strong> With Bob's public key, Alice can derive a shared encryption
+          secret via <strong>ECDH</strong> (Elliptic Curve Diffie-Hellman). No key exchange server needed —
+          both parties independently compute the same secret from their own private key + the other's public key.
         </div>
       </div>
 
@@ -80,10 +100,18 @@
           <div id="alice-send-result" class="result"></div>
         </div>
         <div class="card-info">
-          <strong>ECDH</strong> derives a shared secret from Alice's private key + Bob's public key.
-          <strong>AES-256-GCM</strong> encrypts the message with this secret.
-          The encrypted blob is uploaded to Swarm and Alice's mailbox feed (Alice&rarr;Bob) is updated.
-          <strong>Only Alice and Bob can derive this key</strong> — neither party ever sends it.
+          <strong>What:</strong> Alice encrypts a message and stores it on Swarm in her mailbox feed (Alice&rarr;Bob).
+          <br/><br/>
+          <strong>Encryption (3 steps):</strong>
+          1. <strong>ECDH</strong> — Alice's private key + Bob's public key = 32-byte shared secret.
+          Bob can independently compute the same secret (his private key + Alice's public key).
+          2. <strong>AES-256-GCM</strong> — Encrypts the message JSON with the shared secret + random 12-byte nonce.
+          GCM also authenticates the ciphertext (tamper detection).
+          3. <strong>Upload</strong> — Encrypted blob uploaded to Swarm, then Alice's feed pointer is updated.
+          <br/><br/>
+          <strong>Key insight:</strong> The encryption key is never transmitted. Both parties derive it independently
+          from their own private key + the other's public key. An eavesdropper who sees both public keys
+          still cannot compute the shared secret without a private key.
         </div>
       </div>
 
@@ -98,16 +126,21 @@
           <div id="alice-notify-result" class="result"></div>
         </div>
         <div class="card-info">
-          <strong>ECIES-encrypts</strong> <code>{sender, overlay, feedTopic}</code> with Bob's public key
-          and emits a <code>Notification</code> event on Gnosis Chain.
-          Only needed for <strong>first contact</strong> — subsequent messages are found via feeds.
-          Cost: ~22,000 gas (~0.00002 xDAI).
+          <strong>What:</strong> Sends an on-chain notification so Bob can <em>discover</em> that Alice messaged him —
+          without Bob knowing Alice's address in advance.
+          <br/><br/>
+          <strong>When is this needed?</strong> Only for <strong>first contact</strong>. If Bob already knows
+          Alice (has her in contacts), he can read her feed directly — no notification needed.
+          But if Alice is a stranger, Bob has no way to know she sent him a message. The on-chain
+          notification solves this: it's a "hey, check your mailbox from me" signal.
+          <br/><br/>
+          <strong>How:</strong> <strong>ECIES-encrypts</strong> <code>{sender, overlay, feedTopic}</code>
+          with Bob's public key and emits a <code>Notification</code> event on Gnosis Chain.
+          Only Bob can decrypt it. Cost: ~22,000 gas (~0.00002 xDAI). Querying is free.
           <br/><br/>
           <strong>Wallet:</strong> Requires xDAI on Gnosis Chain. Paste a funded private key in
-          the "Funded Key" config field above. If empty, uses Alice's random key (will fail — no funds).
-          <br/><br/>
-          <strong>In production:</strong> The host app (e.g. Nook) uses the Bee node's wallet, which
-          already holds xBZZ/xDAI for postage stamps. No separate funding needed.
+          the "Funded Key" config field above. In production, apps use the Bee node's wallet
+          (already funded for postage stamps).
         </div>
       </div>
 
@@ -122,8 +155,12 @@
           <div id="alice-inbox-result" class="result"></div>
         </div>
         <div class="card-info">
-          Reads Bob's mailbox feed (Bob&rarr;Alice) from Swarm, derives the shared secret,
-          and decrypts. This shows the reply from step 7.
+          <strong>What:</strong> Alice reads Bob's mailbox feed (Bob&rarr;Alice) — the reverse direction from step 4.
+          Same ECDH shared secret derivation, same AES-256-GCM decryption.
+          <br/><br/>
+          <strong>Full circle:</strong> Alice and Bob are now having an encrypted conversation using only
+          Swarm feeds and math — no server relayed the messages, no authority issued the keys,
+          and no one else can read the content.
         </div>
       </div>
     </section>
@@ -147,8 +184,12 @@
           <div id="bob-publish-result" class="result"></div>
         </div>
         <div class="card-info">
-          Same operation for Bob. Both identities are now discoverable by ETH address on Swarm.
-          Anyone can read the feed — <strong>privacy comes from encryption, not access control</strong>.
+          <strong>What:</strong> Same as step 1 — Bob publishes his public keys to Swarm.
+          Both identities are now discoverable by ETH address.
+          <br/><br/>
+          <strong>Design principle:</strong> Privacy comes from <strong>encryption, not access control</strong>.
+          The identity feeds are public (anyone can read), but messages are encrypted so only
+          the intended parties can read them. This is the same model as PGP public keys.
         </div>
       </div>
 
@@ -163,9 +204,13 @@
           <div id="bob-resolve-result" class="result"></div>
         </div>
         <div class="card-info">
-          Same in reverse — Bob looks up Alice's ETH address to get her public key.
-          Both now have each other's keys — ready for encrypted communication.
-          <strong>No key exchange server needed.</strong>
+          <strong>What:</strong> Bob reads Alice's identity feed — same as step 3 but in reverse.
+          Both now have each other's public keys.
+          <br/><br/>
+          <strong>What this means:</strong> Alice and Bob can now communicate with end-to-end encryption
+          using only Swarm — <strong>no blockchain, no server, no key exchange protocol</strong>.
+          Steps 1-5 work entirely on Swarm. The on-chain part (step 6) is only needed when
+          a stranger contacts you and you need to discover they exist.
         </div>
       </div>
 
@@ -180,9 +225,16 @@
           <div id="bob-read-result" class="result"></div>
         </div>
         <div class="card-info">
-          Reads Alice's mailbox feed (Alice&rarr;Bob) from Swarm. Derives the <strong>same shared secret</strong>
-          using Bob's private key + Alice's public key — ECDH is symmetric, both sides compute the same key.
-          Decrypts with AES-256-GCM. <strong>Neither party ever sent the key!</strong>
+          <strong>What:</strong> Bob reads Alice's mailbox feed (Alice&rarr;Bob) from Swarm and decrypts the messages.
+          <br/><br/>
+          <strong>Decryption:</strong> Bob computes the <strong>same shared secret</strong> that Alice used —
+          his private key + Alice's public key produces the identical 32-byte key (ECDH is symmetric).
+          AES-256-GCM decrypts the ciphertext. If the key is wrong or the data was tampered with,
+          decryption fails (GCM authentication).
+          <br/><br/>
+          <strong>Key insight:</strong> Neither party ever transmitted the encryption key. Both derived it
+          independently from their own private key + the other's public key. This is the magic of
+          Diffie-Hellman key exchange.
         </div>
       </div>
 
@@ -197,12 +249,19 @@
           <div id="bob-poll-result" class="result"></div>
         </div>
         <div class="card-info">
-          Queries Gnosis Chain for <code>Notification</code> events matching
-          <code>keccak256(bobAddress)</code>. <strong>ECIES-decrypts</strong> each with Bob's private key.
-          Failed decryptions (spam or not for you) are silently discarded.
-          This is how you discover <strong>new contacts who messaged you</strong> — no server needed.
+          <strong>What:</strong> Bob queries Gnosis Chain for notifications addressed to him, to discover
+          new contacts who sent him messages.
           <br/><br/>
-          Polling is free (read-only <code>eth_getLogs</code>). Only sending notifications costs gas.
+          <strong>How:</strong> Calls <code>eth_getLogs</code> with topic filter
+          <code>keccak256(bobAddress)</code>. For each log, tries to <strong>ECIES-decrypt</strong>
+          the payload with Bob's private key. Successful decryption reveals the sender's address,
+          overlay, and feed topic. Failed decryption = spam or not for Bob, silently discarded.
+          <br/><br/>
+          <strong>When is this needed?</strong> Only to discover <em>strangers</em> who contacted you.
+          If Bob already knows Alice (from step 3), he can read her feed directly without polling.
+          The registry is a discovery mechanism, not a message transport.
+          <br/><br/>
+          <strong>Cost:</strong> Polling is free (read-only). Only sending notifications (step 6) costs gas.
         </div>
       </div>
 
@@ -219,9 +278,12 @@
           <div id="bob-send-result" class="result"></div>
         </div>
         <div class="card-info">
-          Bob sends an encrypted reply using the same ECDH + AES-256-GCM flow, but on Bob's own mailbox feed
-          (Bob&rarr;Alice). <strong>Two feeds per conversation</strong> — each owned by the sender.
-          Merge both feeds by timestamp to see the full thread.
+          <strong>What:</strong> Bob sends an encrypted reply — same ECDH + AES-256-GCM flow as step 4,
+          but on Bob's own mailbox feed (Bob&rarr;Alice).
+          <br/><br/>
+          <strong>Two feeds per conversation:</strong> Alice&rarr;Bob and Bob&rarr;Alice are separate Swarm feeds,
+          each owned by the sender. To see the full conversation, merge both feeds and sort by timestamp.
+          This design means each party only writes to their own feed — no shared state, no conflicts.
         </div>
       </div>
     </section>
