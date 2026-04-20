@@ -72,11 +72,11 @@ test.describe('Web Demo UI', () => {
 
     // Step 1: Alice publishes identity
     await page.click('#alice-publish')
-    await expect(page.locator('#alice-publish-result')).toContainText('published', { timeout: 30000 })
+    await expect(page.locator('#alice-publish-result')).toContainText('Published', { timeout: 30000 })
 
     // Step 1: Bob publishes identity
     await page.click('#bob-publish')
-    await expect(page.locator('#bob-publish-result')).toContainText('published', { timeout: 30000 })
+    await expect(page.locator('#bob-publish-result')).toContainText('Published', { timeout: 30000 })
 
     // Step 2: Alice resolves Bob
     await page.click('#alice-resolve')
@@ -116,9 +116,9 @@ test.describe('Web Demo UI', () => {
 
     // Publish both and resolve
     await page.click('#alice-publish')
-    await expect(page.locator('#alice-publish-result')).toContainText('published', { timeout: 30000 })
+    await expect(page.locator('#alice-publish-result')).toContainText('Published', { timeout: 30000 })
     await page.click('#bob-publish')
-    await expect(page.locator('#bob-publish-result')).toContainText('published', { timeout: 30000 })
+    await expect(page.locator('#bob-publish-result')).toContainText('Published', { timeout: 30000 })
     await page.click('#bob-resolve')
     await expect(page.locator('#bob-resolve-result')).toContainText('Found Alice', { timeout: 30000 })
 
@@ -146,7 +146,7 @@ test.describe('Web Demo UI', () => {
 
     // Publish adds entries
     await page.click('#alice-publish')
-    await expect(page.locator('#alice-publish-result')).toContainText('published', { timeout: 30000 })
+    await expect(page.locator('#alice-publish-result')).toContainText('Published', { timeout: 30000 })
     await expect(logEntries).not.toHaveCount(0)
 
     // Log entries contain Alice tag

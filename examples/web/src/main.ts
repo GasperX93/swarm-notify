@@ -13,6 +13,7 @@ if (typeof SharedArrayBuffer === 'undefined') {
 import { Bee } from '@ethersphere/bee-js'
 import * as secp from '@noble/secp256k1'
 import { bytesToHex } from '@noble/hashes/utils'
+import * as identityModule from '@lib/identity'
 
 import { Panel } from './panel'
 import { logAlice, logBob, logSystem, clearLog, short } from './log'
@@ -33,9 +34,9 @@ function $(id: string): HTMLElement {
   return document.getElementById(id)!
 }
 
-function setResult(id: string, text: string, cls: 'success' | 'error' | 'info' = 'info'): void {
+function setResult(id: string, html: string, cls: 'success' | 'error' | 'info' = 'info'): void {
   const el = $(id)
-  el.textContent = text
+  el.innerHTML = html
   el.className = `result ${cls}`
 }
 
@@ -69,7 +70,7 @@ async function withLoading(btnId: string, fn: () => Promise<void>, resultId?: st
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     logSystem(`Error: ${msg}`)
-    if (resultId) setResult(resultId, `Error: ${msg}`, 'error')
+    if (resultId) setResult(resultId, `Error: ${escapeHtml(msg)}`, 'error')
   } finally {
     btn.classList.remove('loading')
     btn.disabled = false
@@ -88,6 +89,28 @@ function enableInputs(...ids: string[]): void {
   }
 }
 
+// ─── Auto-fetch stamp ───────────────────────────────────────────
+
+async function autoFetchStamp(beeUrl: string): Promise<void> {
+  try {
+    const res = await fetch(`${beeUrl}/stamps`)
+    const data = (await res.json()) as { stamps?: { batchID: string; usable: boolean }[] }
+    const usable = data.stamps?.find((s) => s.usable)
+    if (usable) {
+      const stampInput = $('cfg-stamp') as HTMLInputElement
+      if (!stampInput.value) {
+        stampInput.value = usable.batchID
+        logSystem(`Auto-detected stamp: <code>${short(usable.batchID)}</code>`)
+      }
+    }
+  } catch {
+    // Bee not reachable yet, that's fine
+  }
+}
+
+// Try to auto-detect stamp on page load
+autoFetchStamp(($('cfg-bee') as HTMLInputElement).value)
+
 // ─── Initialize ─────────────────────────────────────────────────
 
 $('btn-init').addEventListener('click', async () => {
@@ -96,8 +119,14 @@ $('btn-init').addEventListener('click', async () => {
   contractAddress = ($('cfg-contract') as HTMLInputElement).value
   rpcUrl = ($('cfg-rpc') as HTMLInputElement).value
 
+  // Auto-fetch stamp if not provided
   if (!stamp) {
-    ($('init-status') as HTMLElement).textContent = 'Stamp is required!'
+    await autoFetchStamp(beeUrl)
+    stamp = ($('cfg-stamp') as HTMLInputElement).value
+  }
+
+  if (!stamp) {
+    ($('init-status') as HTMLElement).textContent = 'No usable stamp found. Buy one or paste a batch ID.'
     ($('init-status') as HTMLElement).style.color = 'var(--error)'
     return
   }
@@ -127,14 +156,15 @@ $('btn-init').addEventListener('click', async () => {
   bob.overlay = bytesToHex(secp.getPublicKey(bobPrivKey, true)).slice(0, 32)
   logBob(`Overlay (synthetic): <code>${short(bob.overlay!)}</code>`)
 
-  // Display identity info
+  // Display identity info with full addresses
   $('alice-eth').textContent = alice.ethAddress
   $('alice-pub').textContent = short(alice.publicKeyHex, 12)
   $('bob-eth').textContent = bob.ethAddress
   $('bob-pub').textContent = short(bob.publicKeyHex, 12)
 
-  logSystem('Demo initialized. Two identities generated.')
+  logSystem('Demo initialized. Two fresh identities generated.')
   logSystem(`Bee node: ${beeUrl} | Contract: <code>${short(contractAddress)}</code>`)
+  logSystem(`In this demo, both identities share the same Bee node. In production, each user runs their own node.`)
 
   // Enable step 1 buttons
   enableButtons('alice-publish', 'bob-publish')
@@ -147,17 +177,27 @@ $('btn-init').addEventListener('click', async () => {
 $('alice-publish').addEventListener('click', () =>
   withLoading('alice-publish', async () => {
     await alice.publishIdentity(bee, stamp)
-    setResult('alice-publish-result', 'Identity published!', 'success')
+    const topic = identityModule.feedTopic(alice.ethAddress)
+    setResult(
+      'alice-publish-result',
+      `Published!<br/>Feed topic: <code>${short(topic)}</code><br/>ETH address: <code>${alice.ethAddress}</code><br/><small>Share this address with Bob so he can discover you.</small>`,
+      'success',
+    )
     enableButtons('bob-resolve')
-  }),
+  }, 'alice-publish-result'),
 )
 
 $('bob-publish').addEventListener('click', () =>
   withLoading('bob-publish', async () => {
     await bob.publishIdentity(bee, stamp)
-    setResult('bob-publish-result', 'Identity published!', 'success')
+    const topic = identityModule.feedTopic(bob.ethAddress)
+    setResult(
+      'bob-publish-result',
+      `Published!<br/>Feed topic: <code>${short(topic)}</code><br/>ETH address: <code>${bob.ethAddress}</code><br/><small>Share this address with Alice so she can discover you.</small>`,
+      'success',
+    )
     enableButtons('alice-resolve')
-  }),
+  }, 'bob-publish-result'),
 )
 
 // ─── Step 2: Resolve ────────────────────────────────────────────
@@ -168,15 +208,15 @@ $('alice-resolve').addEventListener('click', () =>
     if (resolved) {
       setResult(
         'alice-resolve-result',
-        `Found Bob!\nPubKey: ${short(resolved.walletPublicKey, 12)}\nOverlay: ${short(resolved.overlay)}`,
+        `Found Bob!<br/>PubKey: <code>${short(resolved.walletPublicKey, 12)}</code><br/>Overlay: <code>${short(resolved.overlay)}</code>`,
         'success',
       )
-      enableButtons('alice-send')
+      enableButtons('alice-send', 'alice-notify', 'alice-inbox')
       enableInputs('alice-msg-subject', 'alice-msg-body')
     } else {
       setResult('alice-resolve-result', 'Not found. Publish Bob\'s identity first.', 'error')
     }
-  }),
+  }, 'alice-resolve-result'),
 )
 
 $('bob-resolve').addEventListener('click', () =>
@@ -185,7 +225,7 @@ $('bob-resolve').addEventListener('click', () =>
     if (resolved) {
       setResult(
         'bob-resolve-result',
-        `Found Alice!\nPubKey: ${short(resolved.walletPublicKey, 12)}\nOverlay: ${short(resolved.overlay)}`,
+        `Found Alice!<br/>PubKey: <code>${short(resolved.walletPublicKey, 12)}</code><br/>Overlay: <code>${short(resolved.overlay)}</code>`,
         'success',
       )
       enableButtons('bob-send', 'bob-read', 'bob-poll')
@@ -193,7 +233,7 @@ $('bob-resolve').addEventListener('click', () =>
     } else {
       setResult('bob-resolve-result', 'Not found. Publish Alice\'s identity first.', 'error')
     }
-  }),
+  }, 'bob-resolve-result'),
 )
 
 // ─── Step 3: Send Message ───────────────────────────────────────
@@ -204,8 +244,8 @@ $('alice-send').addEventListener('click', () =>
     const body = ($('alice-msg-body') as HTMLTextAreaElement).value || 'First message from Alice!'
 
     await alice.sendMessage(bee, stamp, subject, body)
-    setResult('alice-send-result', `Sent: "${subject}"`, 'success')
-    enableButtons('bob-read', 'alice-notify')
+    setResult('alice-send-result', `Sent: "${escapeHtml(subject)}"`, 'success')
+    enableButtons('bob-read')
   }, 'alice-send-result'),
 )
 
@@ -215,7 +255,7 @@ $('bob-read').addEventListener('click', () =>
   withLoading('bob-read', async () => {
     const messages = await bob.readMessages(bee)
     renderMessages('bob-read-result', messages)
-  }),
+  }, 'bob-read-result'),
 )
 
 // ─── Step 5: Send Notification ──────────────────────────────────
@@ -223,8 +263,10 @@ $('bob-read').addEventListener('click', () =>
 $('alice-notify').addEventListener('click', () =>
   withLoading('alice-notify', async () => {
     const provider = createSigningProvider(rpcUrl, '0x' + bytesToHex(alice.privateKey))
+    setResult('alice-notify-result', 'Sending tx to Gnosis Chain...', 'info')
+
     const txHash = await alice.sendNotification(provider, contractAddress)
-    setResult('alice-notify-result', `Tx: ${txHash}\nWaiting for confirmation...`, 'info')
+    setResult('alice-notify-result', `Tx: <code>${short(txHash)}</code><br/>Waiting for confirmation...`, 'info')
 
     // Wait for mining
     logAlice('Waiting for tx to be mined...')
@@ -232,11 +274,14 @@ $('alice-notify').addEventListener('click', () =>
     const ethProvider = new JsonRpcProvider(rpcUrl)
     const receipt = await ethProvider.waitForTransaction(txHash, 1, 60000)
     if (receipt) {
-      setResult('alice-notify-result', `Tx: ${short(txHash)}\nBlock: ${receipt.blockNumber}\nGas: ${receipt.gasUsed.toString()}`, 'success')
+      setResult(
+        'alice-notify-result',
+        `Tx: <code>${short(txHash)}</code><br/>Block: ${receipt.blockNumber}<br/>Gas: ${receipt.gasUsed.toString()}`,
+        'success',
+      )
       logAlice(`Mined in block ${receipt.blockNumber} (${receipt.gasUsed.toString()} gas)`)
     }
-    enableButtons('bob-poll')
-  }),
+  }, 'alice-notify-result'),
 )
 
 // ─── Step 6: Poll Notifications ─────────────────────────────────
@@ -250,14 +295,14 @@ $('bob-poll').addEventListener('click', () =>
       setResult('bob-poll-result', 'No notifications found.', 'info')
     } else {
       const lines = notifications.map(
-        (n) => `Sender: ${short(n.payload.sender)}\nOverlay: ${short(n.payload.overlay)}\nBlock: ${n.blockNumber}`,
+        (n) => `Sender: <code>${short(n.payload.sender)}</code><br/>Overlay: <code>${short(n.payload.overlay)}</code><br/>Block: ${n.blockNumber}`,
       )
-      setResult('bob-poll-result', `Found ${notifications.length}:\n\n${lines.join('\n\n')}`, 'success')
+      setResult('bob-poll-result', `Found ${notifications.length}:<br/><br/>${lines.join('<br/><br/>')}`, 'success')
     }
-  }),
+  }, 'bob-poll-result'),
 )
 
-// ─── Step 7: Reply & Inbox ──────────────────────────────────────
+// ─── Step 7: Reply ──────────────────────────────────────────────
 
 $('bob-send').addEventListener('click', () =>
   withLoading('bob-send', async () => {
@@ -265,16 +310,18 @@ $('bob-send').addEventListener('click', () =>
     const body = ($('bob-msg-body') as HTMLTextAreaElement).value || 'Got it, thanks!'
 
     await bob.sendMessage(bee, stamp, subject, body)
-    setResult('bob-send-result', `Sent: "${subject}"`, 'success')
+    setResult('bob-send-result', `Sent: "${escapeHtml(subject)}"`, 'success')
     enableButtons('alice-inbox')
   }, 'bob-send-result'),
 )
+
+// ─── Step 8: Alice reads reply ──────────────────────────────────
 
 $('alice-inbox').addEventListener('click', () =>
   withLoading('alice-inbox', async () => {
     const messages = await alice.readMessages(bee)
     renderMessages('alice-inbox-result', messages)
-  }),
+  }, 'alice-inbox-result'),
 )
 
 // ─── Log Clear ──────────────────────────────────────────────────
