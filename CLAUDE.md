@@ -91,7 +91,9 @@ contract SwarmNotificationRegistry {
 }
 ```
 
-~20 lines. No storage, no admin. Privacy from encryption, not access control. Deploy on Gnosis Chain.
+~20 lines. No storage, no admin. Privacy from encryption, not access control.
+
+**Deployed:** Gnosis Chain — `0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf`
 
 ## Core Types
 
@@ -269,6 +271,10 @@ registry.ts (depends on: crypto, NotifyProvider interface — no ethers, no Swar
 - Merge finished work back into `development`.
 - PRs to `main` require approval from **@GasperX93**.
 - Branch naming: `feature/<issue-number>-<short-description>` or `fix/<issue-number>-<short-description>`.
+
+## Maintenance Notes
+
+- If `contracts/SwarmNotificationRegistry.sol` changes, update the ABI and key values table in `README.md` to match.
 
 ## Coding Conventions
 
