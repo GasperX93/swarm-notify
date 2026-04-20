@@ -91,7 +91,9 @@ contract SwarmNotificationRegistry {
 }
 ```
 
-~20 lines. No storage, no admin. Privacy from encryption, not access control. Deploy on Gnosis Chain.
+~20 lines. No storage, no admin. Privacy from encryption, not access control.
+
+**Deployed:** Gnosis Chain — `0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf`
 
 ## Core Types
 

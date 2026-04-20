@@ -150,14 +150,31 @@ test/
   registry.test.ts
 ```
 
+## Deployed Contracts
+
+| Network | Address | Explorer |
+|---------|---------|----------|
+| Gnosis Chain | `0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf` | [Gnosisscan](https://gnosisscan.io/address/0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf) |
+
 ## Development
 
 ```bash
 npm install
-npm run build        # TypeScript compilation
-npm test             # Run tests (required before PR)
-npm run lint         # ESLint + Prettier
-npm run check:types  # TypeScript type check
+npm run build             # TypeScript compilation
+npm test                  # Run tests (required before PR)
+npm run lint              # ESLint + Prettier
+npm run check:types       # TypeScript type check
+npm run compile:contracts # Compile Solidity contracts (Hardhat)
+```
+
+### Deploying the contract
+
+```bash
+# Set deployer key in .env
+echo "DEPLOYER_PRIVATE_KEY=0x..." > .env
+
+# Deploy to Gnosis Chain
+npm run deploy -- --network gnosis
 ```
 
 ## Contributing

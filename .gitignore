@@ -3,6 +3,10 @@ dist/
 *.tsbuildinfo
 .DS_Store
 
+# Environment (secrets)
+.env
+.env.*
+
 # Hardhat
 artifacts/
 cache/
