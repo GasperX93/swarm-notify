@@ -44,18 +44,28 @@ export function createReadOnlyProvider(rpcUrl: string): NotifyProvider {
   }
 }
 
-/** Signing provider using ethers (bundled in the web app). */
+/** Signing provider using ethers (dynamic import for browser ESM). */
 export function createSigningProvider(rpcUrl: string, privateKey: string): NotifyProvider {
-  const { JsonRpcProvider, Wallet } = require('ethers') as typeof import('ethers')
-  const provider = new JsonRpcProvider(rpcUrl)
-  const wallet = new Wallet(privateKey, provider)
-
   const readOnly = createReadOnlyProvider(rpcUrl)
+
+  // Lazily initialized on first sendTransaction call
+  let walletPromise: Promise<import('ethers').Wallet> | null = null
+
+  async function getWallet() {
+    if (!walletPromise) {
+      walletPromise = import('ethers').then(({ JsonRpcProvider, Wallet }) => {
+        const provider = new JsonRpcProvider(rpcUrl)
+        return new Wallet(privateKey, provider)
+      })
+    }
+    return walletPromise
+  }
 
   return {
     getLogs: readOnly.getLogs,
     call: readOnly.call,
     async sendTransaction(tx) {
+      const wallet = await getWallet()
       const response = await wallet.sendTransaction({
         to: tx.to,
         data: tx.data,
