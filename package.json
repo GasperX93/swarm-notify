@@ -16,7 +16,8 @@
     "check:types": "tsc --noEmit",
     "compile:contracts": "hardhat compile",
     "deploy": "hardhat run scripts/deploy.ts",
-    "cli": "ts-node examples/cli.ts"
+    "cli": "ts-node examples/cli.ts",
+    "test:e2e": "vitest run test/e2e.test.ts --config vitest.e2e.config.ts"
   },
   "peerDependencies": {
     "@ethersphere/bee-js": ">=7.0.0"
