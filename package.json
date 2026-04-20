@@ -1,0 +1,41 @@
+{
+  "name": "@swarm-notify/sdk",
+  "version": "0.1.0",
+  "description": "Decentralized encrypted notifications and messaging for Swarm light nodes",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/ test/ --fix && prettier --write src/ test/",
+    "lint:check": "eslint src/ test/ && prettier --check src/ test/",
+    "check:types": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@ethersphere/bee-js": ">=7.0.0"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.7.2",
+    "@noble/secp256k1": "^2.2.3"
+  },
+  "devDependencies": {
+    "@ethersphere/bee-js": "^11.1.1",
+    "@types/node": "^22.15.3",
+    "eslint": "^9.25.1",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GasperX93/swarm-notify"
+  }
+}
