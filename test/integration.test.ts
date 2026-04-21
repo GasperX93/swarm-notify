@@ -372,7 +372,6 @@ describe('registry notification flow', () => {
       alice.publicKey,
       alice.ethAddress,
       payload,
-      bob.privateKey,
     )
 
     // Alice polls — discovers Bob
@@ -401,7 +400,7 @@ describe('registry notification flow', () => {
       overlay: bob.overlay,
       feedTopic: 'valid-topic',
     }
-    await registry.sendNotification(provider, CONTRACT, alice.publicKey, alice.ethAddress, validPayload, bob.privateKey)
+    await registry.sendNotification(provider, CONTRACT, alice.publicKey, alice.ethAddress, validPayload)
 
     // Spammer sends notification encrypted with a different key (Alice can't decrypt)
     const spammer = makeUser()
@@ -442,7 +441,7 @@ describe('registry notification flow', () => {
         overlay: sender.overlay,
         feedTopic: `topic-${i}`,
       }
-      await registry.sendNotification(provider, CONTRACT, alice.publicKey, alice.ethAddress, payload, sender.privateKey)
+      await registry.sendNotification(provider, CONTRACT, alice.publicKey, alice.ethAddress, payload)
     }
 
     const notifications = await registry.pollNotifications(provider, CONTRACT, alice.ethAddress, alice.privateKey)
@@ -465,7 +464,6 @@ describe('registry notification flow', () => {
         alice.publicKey,
         alice.ethAddress,
         { sender: sender.ethAddress, overlay: sender.overlay, feedTopic: `topic-${i}` },
-        sender.privateKey,
       )
     }
 
@@ -521,7 +519,6 @@ describe('end-to-end: discovery → messaging', () => {
       bob.publicKey,
       bob.ethAddress,
       { sender: alice.ethAddress, overlay: alice.overlay, feedTopic },
-      alice.privateKey,
     )
 
     // 4. Bob polls registry — discovers Alice

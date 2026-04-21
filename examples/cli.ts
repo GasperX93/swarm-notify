@@ -341,7 +341,6 @@ registryCmd
       recipientPubKey,
       contact.ethAddress,
       { sender: myAddress, overlay: myOverlay, feedTopic },
-      privKey,
     )
 
     console.log(`Notification sent to ${contact.nickname}`)

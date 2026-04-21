@@ -128,15 +128,12 @@ describe('ABI encoding', () => {
     const provider = createMockProvider()
     const recipientPrivKey = secp.utils.randomPrivateKey()
     const recipientPubKey = secp.getPublicKey(recipientPrivKey, true)
-    const senderPrivKey = secp.utils.randomPrivateKey()
-
     await sendNotification(
       provider,
       CONTRACT_ADDRESS,
       recipientPubKey,
       '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       SAMPLE_PAYLOAD,
-      senderPrivKey,
     )
 
     const sentData = provider.sentTxs[0].data
@@ -150,7 +147,6 @@ describe('ABI encoding', () => {
     const provider = createMockProvider()
     const recipientPrivKey = secp.utils.randomPrivateKey()
     const recipientPubKey = secp.getPublicKey(recipientPrivKey, true)
-    const senderPrivKey = secp.utils.randomPrivateKey()
     const recipientAddr = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 
     await sendNotification(
@@ -159,7 +155,6 @@ describe('ABI encoding', () => {
       recipientPubKey,
       recipientAddr,
       SAMPLE_PAYLOAD,
-      senderPrivKey,
     )
 
     const sentData = provider.sentTxs[0].data
@@ -174,15 +169,12 @@ describe('sendNotification', () => {
     const provider = createMockProvider()
     const recipientPrivKey = secp.utils.randomPrivateKey()
     const recipientPubKey = secp.getPublicKey(recipientPrivKey, true)
-    const senderPrivKey = secp.utils.randomPrivateKey()
-
     const txHash = await sendNotification(
       provider,
       CONTRACT_ADDRESS,
       recipientPubKey,
       '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       SAMPLE_PAYLOAD,
-      senderPrivKey,
     )
 
     expect(txHash).toBe('0xmocktxhash')
@@ -194,7 +186,6 @@ describe('sendNotification', () => {
     const provider = createMockProvider()
     const recipientPrivKey = secp.utils.randomPrivateKey()
     const recipientPubKey = secp.getPublicKey(recipientPrivKey, true)
-    const senderPrivKey = secp.utils.randomPrivateKey()
     const recipientAddr = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 
     await sendNotification(
@@ -203,7 +194,6 @@ describe('sendNotification', () => {
       recipientPubKey,
       recipientAddr,
       SAMPLE_PAYLOAD,
-      senderPrivKey,
     )
 
     // Extract encrypted payload from calldata and verify it's decryptable
