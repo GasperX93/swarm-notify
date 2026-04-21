@@ -91,7 +91,9 @@ contract SwarmNotificationRegistry {
 }
 ```
 
-~20 lines. No storage, no admin. Privacy from encryption, not access control. Deploy on Gnosis Chain.
+~20 lines. No storage, no admin. Privacy from encryption, not access control.
+
+**Deployed:** Gnosis Chain — `0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf`
 
 ## Core Types
 
@@ -185,14 +187,14 @@ interface NotifyProvider {
 // ─── crypto.ts ───────────────────────────────────────────────────
 
 function deriveSharedSecret(myPrivateKey: Uint8Array, theirPublicKey: Uint8Array): Uint8Array
-function encrypt(plaintext: Uint8Array, sharedSecret: Uint8Array): EncryptedData
-function decrypt(encrypted: EncryptedData, sharedSecret: Uint8Array): Uint8Array
-function eciesEncrypt(data: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array
-function eciesDecrypt(blob: Uint8Array, myPrivateKey: Uint8Array): Uint8Array
+function encrypt(plaintext: Uint8Array, sharedSecret: Uint8Array): Promise<EncryptedData>
+function decrypt(encrypted: EncryptedData, sharedSecret: Uint8Array): Promise<Uint8Array>
+function eciesEncrypt(data: Uint8Array, recipientPublicKey: Uint8Array): Promise<Uint8Array>
+function eciesDecrypt(blob: Uint8Array, myPrivateKey: Uint8Array): Promise<Uint8Array>
 
 // ─── identity.ts ─────────────────────────────────────────────────
 
-function publish(bee: Bee, signer: Signer, stamp: string, identity: SwarmIdentity): Promise<void>
+function publish(bee: Bee, signer: string | Uint8Array, stamp: string, identity: SwarmIdentity): Promise<void>
 function resolve(bee: Bee, ethAddress: string): Promise<SwarmIdentity | null>
 function feedTopic(ethAddress: string): string  // returns keccak256("swarm-identity-" + ethAddress)
 // NOTE: ENS resolution is NOT in this library — host app resolves ENS → ETH address,
@@ -200,26 +202,29 @@ function feedTopic(ethAddress: string): string  // returns keccak256("swarm-iden
 
 // ─── mailbox.ts ──────────────────────────────────────────────────
 
-function send(bee: Bee, signer: Signer, stamp: string, recipient: Contact, message: Omit<Message, 'ts' | 'sender'>): Promise<void>
-function readMessages(bee: Bee, signer: Signer, contact: Contact, myOverlay: string): Promise<Message[]>
-function checkInbox(bee: Bee, signer: Signer, contacts: Contact[], myOverlay: string): Promise<{ contact: Contact; messages: Message[] }[]>
+function send(bee: Bee, signer: string | Uint8Array, stamp: string, myPrivateKey: Uint8Array, myOverlay: string, recipient: Contact, message: Omit<Message, 'v' | 'ts' | 'sender'>): Promise<void>
+function readMessages(bee: Bee, myPrivateKey: Uint8Array, myOverlay: string, contact: Contact): Promise<Message[]>
+function checkInbox(bee: Bee, myPrivateKey: Uint8Array, myOverlay: string, contacts: Contact[]): Promise<{ contact: Contact; messages: Message[] }[]>
 function feedTopic(senderOverlay: string, recipientOverlay: string): string
 
 // ─── contacts.ts ─────────────────────────────────────────────────
+// ContactStore is an in-memory class. Host apps handle persistence.
 
-function add(ethAddress: string, nickname: string, identity: SwarmIdentity): Contact
-function remove(ethAddress: string): void
-function list(): Contact[]
-function update(ethAddress: string, changes: Partial<Pick<Contact, 'nickname' | 'overlay' | 'walletPublicKey' | 'beePublicKey'>>): Contact
-// NOTE: importFromGranteeLabels is NOT in this library — it's Nook-specific.
-// Host apps import contacts however they want, then call contacts.add().
+class ContactStore {
+  static from(data: Contact[]): ContactStore
+  add(ethAddress: string, nickname: string, identity: SwarmIdentity): Contact
+  remove(ethAddress: string): void
+  list(): Contact[]
+  update(ethAddress: string, changes: Partial<Pick<Contact, 'nickname' | 'overlay' | 'walletPublicKey' | 'beePublicKey'>>): Contact
+  export(): Contact[]
+}
 
 // ─── registry.ts ─────────────────────────────────────────────────
 // Uses NotifyProvider (framework-agnostic) — NOT ethers Provider directly.
 // Host app wraps its own provider. See NotifyProvider interface above.
 
-function sendNotification(provider: NotifyProvider, recipientEthAddress: string, payload: NotificationPayload, senderPrivateKey: Uint8Array): Promise<string>  // returns txHash
-function pollNotifications(provider: NotifyProvider, myEthAddress: string, myPrivateKey: Uint8Array, fromBlock?: number): Promise<{ payload: NotificationPayload; blockNumber: number }[]>
+function sendNotification(provider: NotifyProvider, contractAddress: string, recipientPublicKey: Uint8Array, recipientEthAddress: string, payload: NotificationPayload): Promise<string>
+function pollNotifications(provider: NotifyProvider, contractAddress: string, myEthAddress: string, myPrivateKey: Uint8Array, fromBlock?: number): Promise<{ payload: NotificationPayload; blockNumber: number }[]>
 function recipientHash(ethAddress: string): string  // returns keccak256(ethAddress)
 ```
 
@@ -269,6 +274,11 @@ registry.ts (depends on: crypto, NotifyProvider interface — no ethers, no Swar
 - Merge finished work back into `development`.
 - PRs to `main` require approval from **@GasperX93**.
 - Branch naming: `feature/<issue-number>-<short-description>` or `fix/<issue-number>-<short-description>`.
+
+## Maintenance Notes
+
+- If `contracts/SwarmNotificationRegistry.sol` changes, update the ABI and key values table in `README.md` to match.
+- When code or logic changes in any module (`src/`), check whether the **reference CLI app** (`examples/cli.ts`) and **all tests** (`test/`) need updating — this includes unit tests, integration tests (`test/integration.test.ts`), and E2E tests (`test/e2e.test.ts`).
 
 ## Coding Conventions
 

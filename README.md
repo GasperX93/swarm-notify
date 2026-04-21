@@ -150,15 +150,98 @@ test/
   registry.test.ts
 ```
 
+## Deployed Contracts
+
+| Network | Chain ID | Address | Explorer |
+|---------|----------|---------|----------|
+| Gnosis Chain | 100 | `0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf` | [Gnosisscan](https://gnosisscan.io/address/0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf) |
+
+### Contract ABI
+
+The contract has a single function and a single event:
+
+```json
+[
+  {
+    "type": "function",
+    "name": "notify",
+    "inputs": [
+      { "name": "recipientHash", "type": "bytes32", "indexed": false },
+      { "name": "encryptedPayload", "type": "bytes", "indexed": false }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "Notification",
+    "inputs": [
+      { "name": "recipientHash", "type": "bytes32", "indexed": true },
+      { "name": "encryptedPayload", "type": "bytes", "indexed": false }
+    ]
+  }
+]
+```
+
+**Key values:**
+| Item | Value |
+|------|-------|
+| Function selector (`notify`) | `0xe0bed146` |
+| Event topic (`Notification`) | `0xec0eaa67688a36c9864d6ae20470643e6995c84aad33e725bdc9cb72d22fa810` |
+| `recipientHash` | `keccak256(ethAddress)` — 20-byte address, not checksummed string |
+| `encryptedPayload` | ECIES-encrypted JSON `{ sender, overlay, feedTopic }` |
+| Gas cost per notification | ~22,000 gas (~0.00002 xDAI on Gnosis Chain) |
+| Querying (getLogs) | Free (read-only) |
+
+The full compiled ABI is also available at `artifacts/contracts/SwarmNotificationRegistry.sol/SwarmNotificationRegistry.json` after running `npm run compile:contracts`.
+
 ## Development
 
 ```bash
 npm install
-npm run build        # TypeScript compilation
-npm test             # Run tests (required before PR)
-npm run lint         # ESLint + Prettier
-npm run check:types  # TypeScript type check
+npm run build             # TypeScript compilation
+npm test                  # Run tests (required before PR)
+npm run lint              # ESLint + Prettier
+npm run check:types       # TypeScript type check
+npm run compile:contracts # Compile Solidity contracts (Hardhat)
 ```
+
+### Deploying the contract
+
+```bash
+# Set deployer key in .env
+echo "DEPLOYER_PRIVATE_KEY=0x..." > .env
+
+# Deploy to Gnosis Chain
+npm run deploy -- --network gnosis
+```
+
+## CLI Reference App
+
+A CLI tool for testing and demoing the full library. See [`examples/README.md`](./examples/README.md) for detailed usage.
+
+```bash
+# Quick start
+export PRIVATE_KEY=0x... BEE_URL=http://localhost:1633 STAMP=<batch-id>
+
+npm run cli -- identity publish
+npm run cli -- contacts add 0x... "Alice"
+npm run cli -- mailbox send 0x... -s "Hello" -b "Hi Alice!"
+npm run cli -- registry poll
+```
+
+## Web UI Demo
+
+An interactive split-screen demo (Alice / Bob) with inline explanations of the crypto at each step.
+
+```bash
+cd examples/web
+npm install
+npm run dev
+# Open http://localhost:5173
+```
+
+See [`examples/web/`](./examples/web/) for details. Requires a running Bee node and a postage stamp.
 
 ## Contributing
 

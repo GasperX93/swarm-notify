@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+
+# Environment (secrets)
+.env
+.env.*
+
+# CLI local data
+data/
+
+# Hardhat
+artifacts/
+cache/
+typechain-types/
