@@ -1,7 +1,7 @@
 export * as crypto from './crypto'
 export * as identity from './identity'
 export * as mailbox from './mailbox'
-export * as contacts from './contacts'
+export { ContactStore } from './contacts'
 export * as registry from './registry'
 
 export type {

@@ -1,6 +1,5 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest'
-import { add, remove, list, update } from '../src/contacts'
+import { ContactStore } from '../src/contacts'
 
 const mockIdentity = {
   walletPublicKey: '02' + 'ab'.repeat(32),
@@ -8,13 +7,15 @@ const mockIdentity = {
   overlay: 'ff'.repeat(32),
 }
 
+let store: ContactStore
+
 beforeEach(() => {
-  localStorage.clear()
+  store = new ContactStore()
 })
 
 describe('add', () => {
   it('creates contact with all fields', () => {
-    const contact = add('0x1234567890abcdef1234567890abcdef12345678', 'Alice', mockIdentity)
+    const contact = store.add('0x1234567890abcdef1234567890abcdef12345678', 'Alice', mockIdentity)
 
     expect(contact.ethAddress).toBe('0x1234567890abcdef1234567890abcdef12345678')
     expect(contact.nickname).toBe('Alice')
@@ -25,28 +26,28 @@ describe('add', () => {
   })
 
   it('throws on duplicate ethAddress', () => {
-    add('0x1234567890abcdef1234567890abcdef12345678', 'Alice', mockIdentity)
+    store.add('0x1234567890abcdef1234567890abcdef12345678', 'Alice', mockIdentity)
     expect(() =>
-      add('0x1234567890abcdef1234567890abcdef12345678', 'Alice2', mockIdentity),
+      store.add('0x1234567890abcdef1234567890abcdef12345678', 'Alice2', mockIdentity),
     ).toThrow('Contact already exists')
   })
 
   it('duplicate check is case-insensitive', () => {
-    add('0xabcdef1234567890abcdef1234567890abcdef12', 'Alice', mockIdentity)
+    store.add('0xabcdef1234567890abcdef1234567890abcdef12', 'Alice', mockIdentity)
     expect(() =>
-      add('0xABCDEF1234567890ABCDEF1234567890ABCDEF12', 'Alice2', mockIdentity),
+      store.add('0xABCDEF1234567890ABCDEF1234567890ABCDEF12', 'Alice2', mockIdentity),
     ).toThrow('Contact already exists')
   })
 })
 
 describe('remove', () => {
   it('removes contact from list', () => {
-    add('0x1111111111111111111111111111111111111111', 'Alice', mockIdentity)
-    add('0x2222222222222222222222222222222222222222', 'Bob', mockIdentity)
+    store.add('0x1111111111111111111111111111111111111111', 'Alice', mockIdentity)
+    store.add('0x2222222222222222222222222222222222222222', 'Bob', mockIdentity)
 
-    remove('0x1111111111111111111111111111111111111111')
+    store.remove('0x1111111111111111111111111111111111111111')
 
-    const contacts = list()
+    const contacts = store.list()
     expect(contacts).toHaveLength(1)
     expect(contacts[0].nickname).toBe('Bob')
   })
@@ -54,34 +55,41 @@ describe('remove', () => {
 
 describe('list', () => {
   it('returns empty array when no contacts', () => {
-    expect(list()).toEqual([])
+    expect(store.list()).toEqual([])
   })
 
   it('returns all contacts', () => {
-    add('0x1111111111111111111111111111111111111111', 'Alice', mockIdentity)
-    add('0x2222222222222222222222222222222222222222', 'Bob', mockIdentity)
+    store.add('0x1111111111111111111111111111111111111111', 'Alice', mockIdentity)
+    store.add('0x2222222222222222222222222222222222222222', 'Bob', mockIdentity)
 
-    expect(list()).toHaveLength(2)
+    expect(store.list()).toHaveLength(2)
+  })
+
+  it('returns a copy (mutations do not affect store)', () => {
+    store.add('0x1111111111111111111111111111111111111111', 'Alice', mockIdentity)
+    const list = store.list()
+    list.pop()
+    expect(store.list()).toHaveLength(1)
   })
 })
 
 describe('update', () => {
   it('updates nickname', () => {
-    add('0x1111111111111111111111111111111111111111', 'Alice', mockIdentity)
+    store.add('0x1111111111111111111111111111111111111111', 'Alice', mockIdentity)
 
-    const updated = update('0x1111111111111111111111111111111111111111', {
+    const updated = store.update('0x1111111111111111111111111111111111111111', {
       nickname: 'Alice Updated',
     })
 
     expect(updated.nickname).toBe('Alice Updated')
-    expect(list()[0].nickname).toBe('Alice Updated')
+    expect(store.list()[0].nickname).toBe('Alice Updated')
   })
 
   it('updates overlay (key refresh)', () => {
-    add('0x1111111111111111111111111111111111111111', 'Alice', mockIdentity)
+    store.add('0x1111111111111111111111111111111111111111', 'Alice', mockIdentity)
 
     const newOverlay = 'aa'.repeat(32)
-    const updated = update('0x1111111111111111111111111111111111111111', {
+    const updated = store.update('0x1111111111111111111111111111111111111111', {
       overlay: newOverlay,
     })
 
@@ -90,7 +98,28 @@ describe('update', () => {
 
   it('throws if contact not found', () => {
     expect(() =>
-      update('0x0000000000000000000000000000000000000000', { nickname: 'Nobody' }),
+      store.update('0x0000000000000000000000000000000000000000', { nickname: 'Nobody' }),
     ).toThrow('Contact not found')
+  })
+})
+
+describe('export / from', () => {
+  it('round-trips through export and from', () => {
+    store.add('0x1111111111111111111111111111111111111111', 'Alice', mockIdentity)
+    store.add('0x2222222222222222222222222222222222222222', 'Bob', mockIdentity)
+
+    const exported = store.export()
+    const restored = ContactStore.from(exported)
+
+    expect(restored.list()).toHaveLength(2)
+    expect(restored.list()[0].nickname).toBe('Alice')
+    expect(restored.list()[1].nickname).toBe('Bob')
+  })
+
+  it('export returns a copy', () => {
+    store.add('0x1111111111111111111111111111111111111111', 'Alice', mockIdentity)
+    const exported = store.export()
+    exported.pop()
+    expect(store.list()).toHaveLength(1)
   })
 })
