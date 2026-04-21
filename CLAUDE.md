@@ -278,7 +278,11 @@ registry.ts (depends on: crypto, NotifyProvider interface — no ethers, no Swar
 ## Maintenance Notes
 
 - If `contracts/SwarmNotificationRegistry.sol` changes, update the ABI and key values table in `README.md` to match.
-- When code or logic changes in any module (`src/`), check whether the **reference CLI app** (`examples/cli.ts`) and **all tests** (`test/`) need updating — this includes unit tests, integration tests (`test/integration.test.ts`), and E2E tests (`test/e2e.test.ts`).
+- When code or logic changes in any module (`src/`), check whether **all** of the following need updating:
+  - Reference CLI app (`examples/cli.ts`)
+  - Web UI reference app (`examples/web/`) — including step descriptions, use case cards, privacy table, and flow diagrams
+  - Unit tests, integration tests (`test/integration.test.ts`), and E2E tests (`test/e2e.test.ts`)
+  - Playwright tests (`examples/web/tests/`)
 
 ## Coding Conventions
 
