@@ -47,13 +47,31 @@
           Alice found Bob's address via his <strong>ENS name</strong> (her app resolves <code>bob.eth</code> → ETH address),
           a <strong>DAO member directory</strong>, or a <strong>project page</strong>.
         </div>
-        <div class="use-case-flow">
-          <div class="flow-step">Alice publishes identity <span class="net-tag swarm">Swarm</span></div>
-          <div class="flow-step">Alice resolves Bob's ENS → identity <span class="net-tag swarm">Swarm</span></div>
-          <div class="flow-step">Alice sends drive-share message <span class="net-tag swarm">Swarm</span></div>
-          <div class="flow-step">Alice sends on-chain notification <span class="net-tag chain">Gnosis</span></div>
-          <div class="flow-step">Bob polls registry → discovers Alice <span class="net-tag chain">Gnosis</span></div>
-          <div class="flow-step">Bob resolves Alice → reads message <span class="net-tag swarm">Swarm</span></div>
+        <div class="flow-diagram">
+          <div class="flow-col">
+            <div class="flow-actor alice">Alice</div>
+            <div class="flow-box swarm">publish identity</div>
+            <div class="flow-box swarm">resolve Bob (ENS)</div>
+            <div class="flow-box swarm">send message</div>
+            <div class="flow-box chain">send notification</div>
+          </div>
+          <div class="flow-col flow-mid">
+            <div class="flow-arrow">Swarm feeds</div>
+            <div class="flow-arrow">Swarm feeds</div>
+            <div class="flow-arrow">encrypted blob</div>
+            <div class="flow-arrow chain-arrow">Gnosis Chain tx</div>
+            <div class="flow-arrow chain-arrow">poll events</div>
+            <div class="flow-arrow">read feed</div>
+          </div>
+          <div class="flow-col">
+            <div class="flow-actor bob">Bob</div>
+            <div class="flow-spacer"></div>
+            <div class="flow-spacer"></div>
+            <div class="flow-spacer"></div>
+            <div class="flow-spacer"></div>
+            <div class="flow-box chain">poll registry</div>
+            <div class="flow-box swarm">discover + read</div>
+          </div>
         </div>
         <div class="use-case-modules">
           <span class="mod used">identity</span>
@@ -78,10 +96,27 @@
           <strong>messaging app</strong>, published on a <strong>website</strong>,
           scanned a <strong>QR code</strong> at a meetup, or listed in a <strong>DAO directory</strong>.
         </div>
-        <div class="use-case-flow">
-          <div class="flow-step">Both publish identities <span class="net-tag swarm">Swarm</span></div>
-          <div class="flow-step">Both resolve each other <span class="net-tag swarm">Swarm</span></div>
-          <div class="flow-step">Send and read messages directly <span class="net-tag swarm">Swarm</span></div>
+        <div class="flow-diagram">
+          <div class="flow-col">
+            <div class="flow-actor alice">Alice</div>
+            <div class="flow-box swarm">publish identity</div>
+            <div class="flow-box swarm">resolve Bob</div>
+            <div class="flow-box swarm">send message</div>
+            <div class="flow-box swarm">read reply</div>
+          </div>
+          <div class="flow-col flow-mid">
+            <div class="flow-arrow">Swarm feeds</div>
+            <div class="flow-arrow">Swarm feeds</div>
+            <div class="flow-arrow">encrypted blob</div>
+            <div class="flow-arrow">encrypted blob</div>
+          </div>
+          <div class="flow-col">
+            <div class="flow-actor bob">Bob</div>
+            <div class="flow-box swarm">publish identity</div>
+            <div class="flow-box swarm">resolve Alice</div>
+            <div class="flow-box swarm">read message</div>
+            <div class="flow-box swarm">send reply</div>
+          </div>
         </div>
         <div class="use-case-modules">
           <span class="mod used">identity</span>
@@ -108,12 +143,28 @@
           in their <strong>app's about page</strong>, or in a <strong>DAO profile</strong>.
           Anyone who knows the address can send them encrypted messages.
         </div>
-        <div class="use-case-flow">
-          <div class="flow-step">Recipient publishes identity (one-time) <span class="net-tag swarm">Swarm</span></div>
-          <div class="flow-step">Sender resolves recipient <span class="net-tag swarm">Swarm</span></div>
-          <div class="flow-step">Sender sends message + notification <span class="net-tag swarm">Swarm</span> <span class="net-tag chain">Gnosis</span></div>
-          <div class="flow-step">Recipient polls → discovers sender <span class="net-tag chain">Gnosis</span></div>
-          <div class="flow-step">Recipient reads messages <span class="net-tag swarm">Swarm</span></div>
+        <div class="flow-diagram">
+          <div class="flow-col">
+            <div class="flow-actor alice">Sender</div>
+            <div class="flow-box swarm">resolve recipient</div>
+            <div class="flow-box swarm">send message</div>
+            <div class="flow-box chain">send notification</div>
+          </div>
+          <div class="flow-col flow-mid">
+            <div class="flow-arrow">Swarm feeds</div>
+            <div class="flow-arrow">encrypted blob</div>
+            <div class="flow-arrow chain-arrow">Gnosis Chain tx</div>
+            <div class="flow-arrow chain-arrow">poll events</div>
+            <div class="flow-arrow">read feed</div>
+          </div>
+          <div class="flow-col">
+            <div class="flow-actor bob">Recipient</div>
+            <div class="flow-box swarm">publish identity</div>
+            <div class="flow-spacer"></div>
+            <div class="flow-spacer"></div>
+            <div class="flow-box chain">poll registry</div>
+            <div class="flow-box swarm">read messages</div>
+          </div>
         </div>
         <div class="use-case-modules">
           <span class="mod used">identity</span>
