@@ -6,12 +6,9 @@
  * Or:    npm run cli -- <command> [options]
  */
 
-// localStorage polyfill — must be set before importing contacts module
-import { LocalStorage } from 'node-localstorage'
-const store = new LocalStorage('./data/contacts')
-;(globalThis as any).localStorage = store
-
 import 'dotenv/config'
+import * as fs from 'fs'
+import * as path from 'path'
 import { Command } from 'commander'
 import { Bee } from '@ethersphere/bee-js'
 import * as secp from '@noble/secp256k1'
@@ -20,9 +17,27 @@ import { keccak_256 } from '@noble/hashes/sha3'
 
 import * as identity from '../src/identity'
 import * as mailbox from '../src/mailbox'
-import * as contacts from '../src/contacts'
+import { ContactStore } from '../src/contacts'
 import * as registry from '../src/registry'
 import { createReadOnlyProvider, createSigningProvider } from './provider'
+
+// ─── Contact persistence (file-based, CLI layer) ────────────────
+
+const CONTACTS_FILE = path.resolve('./data/contacts.json')
+
+function loadContacts(): ContactStore {
+  try {
+    const raw = fs.readFileSync(CONTACTS_FILE, 'utf-8')
+    return ContactStore.from(JSON.parse(raw))
+  } catch {
+    return new ContactStore()
+  }
+}
+
+function saveContacts(store: ContactStore): void {
+  fs.mkdirSync(path.dirname(CONTACTS_FILE), { recursive: true })
+  fs.writeFileSync(CONTACTS_FILE, JSON.stringify(store.export(), null, 2))
+}
 
 // ─── Config ─────────────────────────────────────────────────────
 
@@ -161,7 +176,9 @@ contactsCmd
       swarmId = resolved
     }
 
-    const contact = contacts.add(ethAddress, nickname, swarmId)
+    const store = loadContacts()
+    const contact = store.add(ethAddress, nickname, swarmId)
+    saveContacts(store)
     console.log(`Contact added: ${contact.nickname} (${contact.ethAddress})`)
   })
 
@@ -170,7 +187,9 @@ contactsCmd
   .description('Remove a contact')
   .argument('<ethAddress>', 'ETH address')
   .action((ethAddress: string) => {
-    contacts.remove(ethAddress)
+    const store = loadContacts()
+    store.remove(ethAddress)
+    saveContacts(store)
     console.log(`Contact removed: ${ethAddress}`)
   })
 
@@ -178,7 +197,7 @@ contactsCmd
   .command('list')
   .description('List all contacts')
   .action(() => {
-    const all = contacts.list()
+    const all = loadContacts().list()
     if (all.length === 0) {
       console.log('No contacts.')
       return
@@ -213,7 +232,7 @@ mailboxCmd
       process.exit(1)
     }
 
-    const contact = contacts.list().find((c) => c.ethAddress.toLowerCase() === ethAddress.toLowerCase())
+    const contact = loadContacts().list().find((c) => c.ethAddress.toLowerCase() === ethAddress.toLowerCase())
     if (!contact) {
       console.error(`Contact not found: ${ethAddress}. Add them first with 'contacts add'.`)
       process.exit(1)
@@ -244,7 +263,7 @@ mailboxCmd
       process.exit(1)
     }
 
-    const contact = contacts.list().find((c) => c.ethAddress.toLowerCase() === ethAddress.toLowerCase())
+    const contact = loadContacts().list().find((c) => c.ethAddress.toLowerCase() === ethAddress.toLowerCase())
     if (!contact) {
       console.error(`Contact not found: ${ethAddress}`)
       process.exit(1)
@@ -280,7 +299,7 @@ mailboxCmd
       process.exit(1)
     }
 
-    const allContacts = contacts.list()
+    const allContacts = loadContacts().list()
     if (allContacts.length === 0) {
       console.log('No contacts. Add some first.')
       return
@@ -325,7 +344,7 @@ registryCmd
       process.exit(1)
     }
 
-    const contact = contacts.list().find((c) => c.ethAddress.toLowerCase() === ethAddress.toLowerCase())
+    const contact = loadContacts().list().find((c) => c.ethAddress.toLowerCase() === ethAddress.toLowerCase())
     if (!contact) {
       console.error(`Contact not found: ${ethAddress}. Add them first.`)
       process.exit(1)

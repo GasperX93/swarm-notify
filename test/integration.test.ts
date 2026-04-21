@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 /**
  * Integration tests — exercise the full library flow end-to-end
  * with mocked Bee node and NotifyProvider.
@@ -10,7 +9,7 @@ import { keccak_256 } from '@noble/hashes/sha3'
 import { MockBee } from './helpers/mock-bee'
 import * as identity from '../src/identity'
 import * as mailbox from '../src/mailbox'
-import * as contacts from '../src/contacts'
+import { ContactStore } from '../src/contacts'
 import * as registry from '../src/registry'
 import { eciesEncrypt } from '../src/crypto'
 import type { NotifyProvider, NotificationPayload } from '../src/types'
@@ -135,8 +134,10 @@ const STAMP = 'mock-stamp-id'
 
 // ─── Tests ──────────────────────────────────────────────────────
 
+let contacts: ContactStore
+
 beforeEach(() => {
-  localStorage.clear()
+  contacts = new ContactStore()
 })
 
 describe('identity: publish + resolve round-trip', () => {
