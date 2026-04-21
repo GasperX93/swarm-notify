@@ -17,7 +17,7 @@ npm install @swarm-notify/sdk @ethersphere/bee-js
 
 ```typescript
 import { Bee } from '@ethersphere/bee-js'
-import { identity, mailbox, contacts, crypto, registry } from '@swarm-notify/sdk'
+import { identity, mailbox, ContactStore, crypto, registry } from '@swarm-notify/sdk'
 import type { NotifyProvider } from '@swarm-notify/sdk'
 
 const bee = new Bee('http://localhost:1633')
@@ -121,9 +121,11 @@ const alice = await identity.resolve(bee, ethAddress)
 
 ## 4. Add as contact
 
-Save the resolved identity as a contact. Contacts determine which feeds to poll.
+Create a `ContactStore` and save the resolved identity. The store is in-memory — your app handles persistence (localStorage, file, database).
 
 ```typescript
+const contacts = new ContactStore()
+
 const aliceContact = contacts.add(
   alice.ethAddress!,
   'Alice',         // nickname
@@ -137,6 +139,17 @@ Other contact operations:
 contacts.list()                                    // all contacts
 contacts.update(ethAddress, { nickname: 'Ali' })   // update fields
 contacts.remove(ethAddress)                        // stop tracking
+```
+
+Persistence — serialize and restore:
+
+```typescript
+// Save to your storage
+const json = JSON.stringify(contacts.export())
+localStorage.setItem('contacts', json)
+
+// Restore later
+const restored = ContactStore.from(JSON.parse(localStorage.getItem('contacts')!))
 ```
 
 ## 5. Send a message
@@ -239,7 +252,6 @@ await registry.sendNotification(
     overlay: myOverlayAddress,
     feedTopic: mailbox.feedTopic(myOverlayAddress, aliceContact.overlay),
   },
-  myEncryptionPrivKey,
 )
 ```
 
@@ -275,10 +287,11 @@ Putting it all together — Bob sends Alice a message for the first time:
 
 ```typescript
 import { Bee } from '@ethersphere/bee-js'
-import { identity, mailbox, contacts, registry } from '@swarm-notify/sdk'
+import { identity, mailbox, ContactStore, registry } from '@swarm-notify/sdk'
 
 const bee = new Bee('http://localhost:1633')
 const REGISTRY = '0x...'
+const contacts = new ContactStore()
 
 // ── Bob's setup ──────────────────────────────────────────────
 
@@ -309,7 +322,6 @@ await registry.sendNotification(
   bobNotifyProvider, REGISTRY,
   hexToBytes(alice.walletPublicKey), alice.ethAddress!,
   { sender: bobEthAddress, overlay: bobOverlay, feedTopic: mailbox.feedTopic(bobOverlay, alice.overlay) },
-  bobPrivateKey,
 )
 
 // ── Alice's side ─────────────────────────────────────────────
