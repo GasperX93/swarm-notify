@@ -45,6 +45,10 @@ function getPrivateKey(): Uint8Array {
   return bytes
 }
 
+function getPrivateKeyHex(privateKey: Uint8Array): string {
+  return '0x' + bytesToHex(privateKey)
+}
+
 function getPublicKeyHex(privateKey: Uint8Array): string {
   return bytesToHex(secp.getPublicKey(privateKey, true))
 }
@@ -98,8 +102,8 @@ identityCmd
     const ethAddress = getEthAddress(privKey)
     const pubKeyHex = getPublicKeyHex(privKey)
 
-    // Use ethAddress as signer for the feed
-    await identity.publish(bee, ethAddress, stamp, {
+    // Signer must be the private key, not the ETH address
+    await identity.publish(bee, getPrivateKeyHex(privKey), stamp, {
       walletPublicKey: pubKeyHex,
       beePublicKey: pubKeyHex, // Using wallet key as bee key for CLI simplicity
       overlay,
@@ -219,7 +223,7 @@ mailboxCmd
       process.exit(1)
     }
 
-    await mailbox.send(bee, myAddress, stamp, privKey, myOverlay, contact, {
+    await mailbox.send(bee, getPrivateKeyHex(privKey), stamp, privKey, myOverlay, contact, {
       subject: opts.subject,
       body: opts.body,
     })
