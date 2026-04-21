@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Swarm Notify — Interactive Demo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Swarm Notify <span class="subtitle">Interactive Demo</span></h1>
+    <p class="tagline">Encrypted notifications and messaging on Swarm — no servers, no cloud, no accounts.</p>
+    <div class="overview-box">
+      <strong>How discovery works:</strong>
+      If you already know someone's ETH address (shared via chat, website, QR code), you can look up their
+      public keys on Swarm and start messaging immediately — <strong>no blockchain needed</strong>.
+      The on-chain notification registry (steps 6) is only for <em>first-contact discovery</em>:
+      when a stranger sends you a message and you need a way to find out they exist. Think of it like
+      email vs. a phone book — you can email someone directly if you have their address, but the phone book
+      helps strangers find you.
+    </div>
+    <div class="config">
+      <label>Bee URL <input id="cfg-bee" type="text" value="http://localhost:1633" /></label>
+      <label>Stamp <input id="cfg-stamp" type="text" placeholder="auto-detected from Bee node" /></label>
+      <label>Contract <input id="cfg-contract" type="text" value="0x318aE190B77bA39fbcdFA4e84BB7CFD16b846Fcf" /></label>
+      <label>RPC <input id="cfg-rpc" type="text" value="https://rpc.gnosischain.com" /></label>
+      <label>Funded Key <input id="cfg-funded-key" type="password" placeholder="optional — for on-chain notifications" /></label>
+      <button id="btn-init">Initialize</button>
+      <span id="init-status"></span>
+    </div>
+  </header>
+
+  <!-- ─── Use Cases ──────────────────────────────── -->
+  <section class="use-cases">
+    <h2>Integration Scenarios</h2>
+    <p class="section-subtitle">Which modules you need depends on how users discover each other. Here are the three main patterns.</p>
+
+    <div class="use-case-grid">
+      <!-- Use Case 1: Stranger sharing -->
+      <div class="use-case-card">
+        <div class="use-case-header uc-full">
+          <h3>Sharing with a Stranger</h3>
+          <span class="uc-badge">Swarm + Gnosis Chain</span>
+        </div>
+        <div class="use-case-scenario">
+          Alice shares an encrypted drive with Bob. Bob has no advance knowledge of Alice.
+          Alice found Bob's address via his <strong>ENS name</strong> (her app resolves <code>bob.eth</code> → ETH address),
+          a <strong>DAO member directory</strong>, or a <strong>project page</strong>.
+        </div>
+        <div class="use-case-flow">
+          <div class="flow-step">Alice publishes identity <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Alice resolves Bob's ENS → identity <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Alice sends drive-share message <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Alice sends on-chain notification <span class="net-tag chain">Gnosis</span></div>
+          <div class="flow-step">Bob polls registry → discovers Alice <span class="net-tag chain">Gnosis</span></div>
+          <div class="flow-step">Bob resolves Alice → reads message <span class="net-tag swarm">Swarm</span></div>
+        </div>
+        <div class="use-case-modules">
+          <span class="mod used">identity</span>
+          <span class="mod used">mailbox</span>
+          <span class="mod used">registry</span>
+          <span class="mod used">crypto</span>
+        </div>
+        <div class="use-case-meta">
+          <strong>Cost:</strong> Postage stamps + ~22k gas (~0.00002 xDAI)
+          <br/><strong>Demo steps:</strong> All (1–8)
+        </div>
+      </div>
+
+      <!-- Use Case 2: Known contacts -->
+      <div class="use-case-card">
+        <div class="use-case-header uc-swarm">
+          <h3>Known Contacts — Direct Messaging</h3>
+          <span class="uc-badge">Swarm Only</span>
+        </div>
+        <div class="use-case-scenario">
+          Alice and Bob already know each other's ETH addresses — exchanged via a
+          <strong>messaging app</strong>, published on a <strong>website</strong>,
+          scanned a <strong>QR code</strong> at a meetup, or listed in a <strong>DAO directory</strong>.
+        </div>
+        <div class="use-case-flow">
+          <div class="flow-step">Both publish identities <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Both resolve each other <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Send and read messages directly <span class="net-tag swarm">Swarm</span></div>
+        </div>
+        <div class="use-case-modules">
+          <span class="mod used">identity</span>
+          <span class="mod used">mailbox</span>
+          <span class="mod unused">registry</span>
+          <span class="mod used">crypto</span>
+        </div>
+        <div class="use-case-meta">
+          <strong>Cost:</strong> Postage stamps only — <strong>no gas, no blockchain</strong>
+          <br/><strong>Demo steps:</strong> 1–5, 7–8 (skip step 6)
+          <br/><br/>
+          <em>This is the lightweight path. If both parties know each other, the entire system works without touching a blockchain.</em>
+        </div>
+      </div>
+
+      <!-- Use Case 3: Public inbox -->
+      <div class="use-case-card">
+        <div class="use-case-header uc-full">
+          <h3>Public Inbox — Discoverable by Address</h3>
+          <span class="uc-badge">Swarm + Gnosis Chain</span>
+        </div>
+        <div class="use-case-scenario">
+          A user or project publishes their ETH address publicly — on their <strong>website</strong>,
+          in their <strong>app's about page</strong>, or in a <strong>DAO profile</strong>.
+          Anyone who knows the address can send them encrypted messages.
+        </div>
+        <div class="use-case-flow">
+          <div class="flow-step">Recipient publishes identity (one-time) <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Sender resolves recipient <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Sender sends message + notification <span class="net-tag swarm">Swarm</span> <span class="net-tag chain">Gnosis</span></div>
+          <div class="flow-step">Recipient polls → discovers sender <span class="net-tag chain">Gnosis</span></div>
+          <div class="flow-step">Recipient reads messages <span class="net-tag swarm">Swarm</span></div>
+        </div>
+        <div class="use-case-modules">
+          <span class="mod used">identity</span>
+          <span class="mod used">mailbox</span>
+          <span class="mod used">registry</span>
+          <span class="mod used">crypto</span>
+        </div>
+        <div class="use-case-meta">
+          <strong>Cost:</strong> Sender pays ~22k gas for first contact; subsequent messages are free (Swarm only)
+          <br/><strong>Demo steps:</strong> All (1–8)
+          <br/><br/>
+          <em>The registry acts as a permissionless inbox — anyone can notify, spam is filtered by failed ECIES decryption. No server needed.</em>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="demo-title">Interactive Demo</h2>
+    <p class="section-subtitle">Try the flow below. Steps are numbered to match the "Sharing with a stranger" use case. For "Known contacts", skip step 6.</p>
+  </section>
+
+  <main class="split">
+    <!-- ─── ALICE (left column) ────────────────────── -->
+    <section id="alice" class="panel">
+      <h2>Alice</h2>
+      <div class="identity-info">
+        <span class="label">ETH:</span> <code id="alice-eth">—</code><br/>
+        <span class="label">PubKey:</span> <code id="alice-pub">—</code>
+      </div>
+
+      <!-- Step 1: Publish Identity -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">1</span>
+          <h3>Publish Identity (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
+        </div>
+        <div class="card-body">
+          <button id="alice-publish" disabled>Publish to Swarm</button>
+          <div id="alice-publish-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          <strong>What:</strong> Writes Alice's public keys (for encryption) and overlay address (for feed routing)
+          to a Swarm feed. The feed is at a deterministic topic:
+          <code>keccak256("swarm-identity-" + ethAddress)</code>.
+          <br/><br/>
+          <strong>Why:</strong> So anyone who knows Alice's ETH address can look up her encryption keys on Swarm.
+          This is the foundation — without published keys, nobody can encrypt messages to you.
+          <br/><br/>
+          <strong>Privacy:</strong> The identity feed is plaintext — <strong>public by design</strong>.
+          This is intentional: your public key must be public for others to encrypt data for you.
+          The actual messages are encrypted separately (step 4).
+        </div>
+      </div>
+
+      <!-- Step 3: Discover Bob -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">3</span>
+          <h3>Discover Bob (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
+        </div>
+        <div class="card-body">
+          <button id="alice-resolve" disabled>Resolve Bob's Identity</button>
+          <div id="alice-resolve-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          <strong>What:</strong> Alice reads Bob's identity feed from Swarm using his ETH address.
+          She now has Bob's public key and overlay address — everything needed to send him encrypted messages.
+          <br/><br/>
+          <strong>How does Alice know Bob's address?</strong> The same way you know someone's email:
+          it was shared out-of-band — in a chat, on a website, via QR code, or in a contact directory.
+          In this demo, both addresses are visible on screen.
+          <br/><br/>
+          <strong>What this enables:</strong> With Bob's public key, Alice can derive a shared encryption
+          secret via <strong>ECDH</strong> (Elliptic Curve Diffie-Hellman). No key exchange server needed —
+          both parties independently compute the same secret from their own private key + the other's public key.
+        </div>
+      </div>
+
+      <!-- Step 4: Send Message to Bob -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">4</span>
+          <h3>Send Message to Bob (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
+        </div>
+        <div class="card-body">
+          <input id="alice-msg-subject" type="text" placeholder="Subject" value="Hello Bob" disabled />
+          <textarea id="alice-msg-body" placeholder="Message body..." disabled>First message from Alice!</textarea>
+          <button id="alice-send" disabled>Send</button>
+          <div id="alice-send-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          <strong>What:</strong> Alice encrypts a message and stores it on Swarm in her mailbox feed (Alice&rarr;Bob).
+          <br/><br/>
+          <strong>Encryption (3 steps):</strong>
+          1. <strong>ECDH</strong> — Alice's private key + Bob's public key = 32-byte shared secret.
+          Bob can independently compute the same secret (his private key + Alice's public key).
+          2. <strong>AES-256-GCM</strong> — Encrypts the message JSON with the shared secret + random 12-byte nonce.
+          GCM also authenticates the ciphertext (tamper detection).
+          3. <strong>Upload</strong> — Encrypted blob uploaded to Swarm, then Alice's feed pointer is updated.
+          <br/><br/>
+          <strong>Key insight:</strong> The encryption key is never transmitted. Both parties derive it independently
+          from their own private key + the other's public key. An eavesdropper who sees both public keys
+          still cannot compute the shared secret without a private key.
+        </div>
+      </div>
+
+      <!-- Step 6: Notify Bob (on-chain) -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">6</span>
+          <h3>Notify Bob (On-Chain)</h3>
+          <span class="uc-tags">Stranger sharing, Public inbox</span>
+        </div>
+        <div class="card-body">
+          <button id="alice-notify" disabled>Send Notification</button>
+          <div id="alice-notify-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          <strong>What:</strong> Sends an on-chain notification so Bob can <em>discover</em> that Alice messaged him —
+          without Bob knowing Alice's address in advance.
+          <br/><br/>
+          <strong>When is this needed?</strong> Only for <strong>first contact</strong>. If Bob already knows
+          Alice (has her in contacts), he can read her feed directly — no notification needed.
+          But if Alice is a stranger, Bob has no way to know she sent him a message. The on-chain
+          notification solves this: it's a "hey, check your mailbox from me" signal.
+          <br/><br/>
+          <strong>How:</strong> <strong>ECIES-encrypts</strong> <code>{sender, overlay, feedTopic}</code>
+          with Bob's public key and emits a <code>Notification</code> event on Gnosis Chain.
+          Only Bob can decrypt it. Cost: ~22,000 gas (~0.00002 xDAI). Querying is free.
+          <br/><br/>
+          <strong>Wallet:</strong> Requires xDAI on Gnosis Chain. Paste a funded private key in
+          the "Funded Key" config field above. In production, apps use the Bee node's wallet
+          (already funded for postage stamps).
+        </div>
+      </div>
+
+      <!-- Step 8: Check Inbox (read Bob's reply) -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">8</span>
+          <h3>Check Inbox (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
+        </div>
+        <div class="card-body">
+          <button id="alice-inbox" disabled>Check Inbox</button>
+          <div id="alice-inbox-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          <strong>What:</strong> Alice reads Bob's mailbox feed (Bob&rarr;Alice) — the reverse direction from step 4.
+          Same ECDH shared secret derivation, same AES-256-GCM decryption.
+          <br/><br/>
+          <strong>Full circle:</strong> Alice and Bob are now having an encrypted conversation using only
+          Swarm feeds and math — no server relayed the messages, no authority issued the keys,
+          and no one else can read the content.
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── BOB (right column) ─────────────────────── -->
+    <section id="bob" class="panel">
+      <h2>Bob</h2>
+      <div class="identity-info">
+        <span class="label">ETH:</span> <code id="bob-eth">—</code><br/>
+        <span class="label">PubKey:</span> <code id="bob-pub">—</code>
+      </div>
+
+      <!-- Step 2: Publish Identity -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">2</span>
+          <h3>Publish Identity (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
+        </div>
+        <div class="card-body">
+          <button id="bob-publish" disabled>Publish to Swarm</button>
+          <div id="bob-publish-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          <strong>What:</strong> Same as step 1 — Bob publishes his public keys to Swarm.
+          Both identities are now discoverable by ETH address.
+          <br/><br/>
+          <strong>Design principle:</strong> Privacy comes from <strong>encryption, not access control</strong>.
+          The identity feeds are public (anyone can read), but messages are encrypted so only
+          the intended parties can read them. This is the same model as PGP public keys.
+        </div>
+      </div>
+
+      <!-- Step 3b: Discover Alice -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">3</span>
+          <h3>Discover Alice (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
+        </div>
+        <div class="card-body">
+          <button id="bob-resolve" disabled>Resolve Alice's Identity</button>
+          <div id="bob-resolve-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          <strong>What:</strong> Bob reads Alice's identity feed — same as step 3 but in reverse.
+          Both now have each other's public keys.
+          <br/><br/>
+          <strong>What this means:</strong> Alice and Bob can now communicate with end-to-end encryption
+          using only Swarm — <strong>no blockchain, no server, no key exchange protocol</strong>.
+          Steps 1-5 work entirely on Swarm. The on-chain part (step 6) is only needed when
+          a stranger contacts you and you need to discover they exist.
+        </div>
+      </div>
+
+      <!-- Step 5: Read Message from Alice -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">5</span>
+          <h3>Read Messages from Alice (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
+        </div>
+        <div class="card-body">
+          <button id="bob-read" disabled>Check Inbox</button>
+          <div id="bob-read-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          <strong>What:</strong> Bob reads Alice's mailbox feed (Alice&rarr;Bob) from Swarm and decrypts the messages.
+          <br/><br/>
+          <strong>Decryption:</strong> Bob computes the <strong>same shared secret</strong> that Alice used —
+          his private key + Alice's public key produces the identical 32-byte key (ECDH is symmetric).
+          AES-256-GCM decrypts the ciphertext. If the key is wrong or the data was tampered with,
+          decryption fails (GCM authentication).
+          <br/><br/>
+          <strong>Key insight:</strong> Neither party ever transmitted the encryption key. Both derived it
+          independently from their own private key + the other's public key. This is the magic of
+          Diffie-Hellman key exchange.
+        </div>
+      </div>
+
+      <!-- Step 6b: Poll Notifications -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">6</span>
+          <h3>Poll Notifications (on-chain)</h3>
+          <span class="uc-tags">Stranger sharing, Public inbox</span>
+        </div>
+        <div class="card-body">
+          <button id="bob-poll" disabled>Poll Registry</button>
+          <div id="bob-poll-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          <strong>What:</strong> Bob queries Gnosis Chain for notifications addressed to him, to discover
+          new contacts who sent him messages.
+          <br/><br/>
+          <strong>How:</strong> Calls <code>eth_getLogs</code> with topic filter
+          <code>keccak256(bobAddress)</code>. For each log, tries to <strong>ECIES-decrypt</strong>
+          the payload with Bob's private key. Successful decryption reveals the sender's address,
+          overlay, and feed topic. Failed decryption = spam or not for Bob, silently discarded.
+          <br/><br/>
+          <strong>When is this needed?</strong> Only to discover <em>strangers</em> who contacted you.
+          If Bob already knows Alice (from step 3), he can read her feed directly without polling.
+          The registry is a discovery mechanism, not a message transport.
+          <br/><br/>
+          <strong>Cost:</strong> Polling is free (read-only). Only sending notifications (step 6) costs gas.
+        </div>
+      </div>
+
+      <!-- Step 7: Reply to Alice -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">7</span>
+          <h3>Reply to Alice (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
+        </div>
+        <div class="card-body">
+          <input id="bob-msg-subject" type="text" placeholder="Subject" value="Re: Hello Bob" disabled />
+          <textarea id="bob-msg-body" placeholder="Message body..." disabled>Got it, thanks!</textarea>
+          <button id="bob-send" disabled>Send Reply</button>
+          <div id="bob-send-result" class="result"></div>
+        </div>
+        <div class="card-info">
+          <strong>What:</strong> Bob sends an encrypted reply — same ECDH + AES-256-GCM flow as step 4,
+          but on Bob's own mailbox feed (Bob&rarr;Alice).
+          <br/><br/>
+          <strong>Two feeds per conversation:</strong> Alice&rarr;Bob and Bob&rarr;Alice are separate Swarm feeds,
+          each owned by the sender. To see the full conversation, merge both feeds and sort by timestamp.
+          This design means each party only writes to their own feed — no shared state, no conflicts.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="log-header">
+      <h3>Event Log</h3>
+      <span class="log-hint">Technical details of every cryptographic operation</span>
+      <button id="log-clear">Clear</button>
+    </div>
+    <div id="event-log"></div>
+  </footer>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

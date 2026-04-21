@@ -230,6 +230,19 @@ npm run cli -- mailbox send 0x... -s "Hello" -b "Hi Alice!"
 npm run cli -- registry poll
 ```
 
+## Web UI Demo
+
+An interactive split-screen demo (Alice / Bob) with inline explanations of the crypto at each step.
+
+```bash
+cd examples/web
+npm install
+npm run dev
+# Open http://localhost:5173
+```
+
+See [`examples/web/`](./examples/web/) for details. Requires a running Bee node and a postage stamp.
+
 ## Contributing
 
 - Every PR must include tests for new functionality
