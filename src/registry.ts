@@ -149,7 +149,6 @@ export function recipientHash(ethAddress: string): string {
  * @param recipientPublicKey - Recipient's compressed secp256k1 public key (33 bytes)
  * @param recipientEthAddress - Recipient's ETH address
  * @param payload - Notification payload (sender info + feed topic)
- * @param _senderPrivateKey - Sender's private key (reserved for future use, e.g. signing)
  * @returns Transaction hash
  */
 export async function sendNotification(
@@ -158,7 +157,6 @@ export async function sendNotification(
   recipientPublicKey: Uint8Array,
   recipientEthAddress: string,
   payload: NotificationPayload,
-  _senderPrivateKey: Uint8Array,
 ): Promise<string> {
   // 1. JSON-encode and ECIES-encrypt the payload
   const payloadBytes = new TextEncoder().encode(JSON.stringify(payload))

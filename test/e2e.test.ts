@@ -227,7 +227,6 @@ describe('registry: real Gnosis Chain', () => {
       secp.getPublicKey(bobPrivateKey, true),
       bobEthAddress,
       payload,
-      privateKey,
     )
 
     expect(txHash).toMatch(/^0x[0-9a-fA-F]{64}$/)
@@ -312,7 +311,6 @@ describe('full E2E flow: identity → message → notification → discovery', (
       secp.getPublicKey(charliePrivateKey, true),
       charlieEthAddress,
       { sender: ethAddress, overlay, feedTopic },
-      privateKey,
     )
     console.log(`  Full flow notification tx: ${txHash}`)
 
