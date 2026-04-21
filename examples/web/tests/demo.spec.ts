@@ -30,9 +30,22 @@ test.describe('Web Demo UI', () => {
     await expect(page.locator('#cfg-bee')).toHaveValue('http://localhost:1633')
     await expect(page.locator('#cfg-contract')).toHaveValue(/^0x/)
 
+    // Use cases section
+    await expect(page.locator('.use-cases h2').first()).toContainText('Integration Scenarios')
+    await expect(page.locator('.use-case-card')).toHaveCount(3)
+    await expect(page.locator('.use-case-card').nth(0)).toContainText('Sharing with a Stranger')
+    await expect(page.locator('.use-case-card').nth(1)).toContainText('Known Contacts')
+    await expect(page.locator('.use-case-card').nth(2)).toContainText('Public Inbox')
+
+    // Module checklists visible
+    await expect(page.locator('.use-case-card').nth(1).locator('.mod.unused')).toContainText('registry')
+
     // Both panels visible
     await expect(page.locator('#alice h2')).toContainText('Alice')
     await expect(page.locator('#bob h2')).toContainText('Bob')
+
+    // Step cards have use case tags
+    await expect(page.locator('#alice .card-header .uc-tags').first()).toContainText('All scenarios')
 
     // Event log
     await expect(page.locator('.log-header h3')).toContainText('Event Log')
