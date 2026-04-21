@@ -85,6 +85,190 @@ h1 .subtitle {
   padding-bottom: 0.35rem;
 }
 
+/* ─── Use Cases Section ───────────────────────── */
+
+.use-cases {
+  padding: 1.25rem 2rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.use-cases h2 {
+  font-size: 1.1rem;
+  margin-bottom: 0.25rem;
+}
+
+.demo-title {
+  margin-top: 1.5rem;
+}
+
+.section-subtitle {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.use-case-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.use-case-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.use-case-header {
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.use-case-header h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.use-case-header.uc-full {
+  background: linear-gradient(135deg, var(--card) 0%, #1e2a3a 100%);
+}
+
+.use-case-header.uc-swarm {
+  background: linear-gradient(135deg, var(--card) 0%, #1a2e28 100%);
+}
+
+.uc-badge {
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  background: var(--accent-dim);
+  color: white;
+  white-space: nowrap;
+}
+
+.uc-swarm .uc-badge {
+  background: #166534;
+}
+
+.use-case-scenario {
+  padding: 0.6rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+  border-bottom: 1px solid var(--border);
+}
+
+.use-case-scenario strong { color: var(--text); }
+.use-case-scenario code {
+  background: var(--card);
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--accent);
+}
+
+.use-case-flow {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.flow-step {
+  font-size: 0.7rem;
+  padding: 0.2rem 0;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.flow-step::before {
+  content: '→';
+  color: var(--text-dim);
+  font-size: 0.6rem;
+  flex-shrink: 0;
+}
+
+.net-tag {
+  font-size: 0.55rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 0.05rem 0.3rem;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.net-tag.swarm {
+  background: #166534;
+  color: #86efac;
+}
+
+.net-tag.chain {
+  background: #713f12;
+  color: #fde68a;
+}
+
+.use-case-modules {
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.mod {
+  font-size: 0.65rem;
+  font-family: var(--mono);
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+}
+
+.mod.used {
+  background: #14532d;
+  color: #86efac;
+}
+
+.mod.unused {
+  background: var(--card);
+  color: var(--text-dim);
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.use-case-meta {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+  flex-grow: 1;
+}
+
+.use-case-meta em {
+  color: var(--text);
+  font-style: normal;
+  display: block;
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 1100px) {
+  .use-case-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .overview-box {
   background: var(--surface);
   border: 1px solid var(--accent-dim);
@@ -185,6 +369,15 @@ h1 .subtitle {
 .card-header h3 {
   font-size: 0.85rem;
   font-weight: 600;
+  flex-grow: 1;
+}
+
+.uc-tags {
+  font-size: 0.55rem;
+  color: var(--text-dim);
+  font-style: italic;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .card-body {

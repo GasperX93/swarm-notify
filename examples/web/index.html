@@ -30,6 +30,110 @@
     </div>
   </header>
 
+  <!-- ─── Use Cases ──────────────────────────────── -->
+  <section class="use-cases">
+    <h2>Integration Scenarios</h2>
+    <p class="section-subtitle">Which modules you need depends on how users discover each other. Here are the three main patterns.</p>
+
+    <div class="use-case-grid">
+      <!-- Use Case 1: Stranger sharing -->
+      <div class="use-case-card">
+        <div class="use-case-header uc-full">
+          <h3>Sharing with a Stranger</h3>
+          <span class="uc-badge">Swarm + Gnosis Chain</span>
+        </div>
+        <div class="use-case-scenario">
+          Alice shares an encrypted drive with Bob. Bob has no advance knowledge of Alice.
+          Alice found Bob's address via his <strong>ENS name</strong> (her app resolves <code>bob.eth</code> → ETH address),
+          a <strong>DAO member directory</strong>, or a <strong>project page</strong>.
+        </div>
+        <div class="use-case-flow">
+          <div class="flow-step">Alice publishes identity <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Alice resolves Bob's ENS → identity <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Alice sends drive-share message <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Alice sends on-chain notification <span class="net-tag chain">Gnosis</span></div>
+          <div class="flow-step">Bob polls registry → discovers Alice <span class="net-tag chain">Gnosis</span></div>
+          <div class="flow-step">Bob resolves Alice → reads message <span class="net-tag swarm">Swarm</span></div>
+        </div>
+        <div class="use-case-modules">
+          <span class="mod used">identity</span>
+          <span class="mod used">mailbox</span>
+          <span class="mod used">registry</span>
+          <span class="mod used">crypto</span>
+        </div>
+        <div class="use-case-meta">
+          <strong>Cost:</strong> Postage stamps + ~22k gas (~0.00002 xDAI)
+          <br/><strong>Demo steps:</strong> All (1–8)
+        </div>
+      </div>
+
+      <!-- Use Case 2: Known contacts -->
+      <div class="use-case-card">
+        <div class="use-case-header uc-swarm">
+          <h3>Known Contacts — Direct Messaging</h3>
+          <span class="uc-badge">Swarm Only</span>
+        </div>
+        <div class="use-case-scenario">
+          Alice and Bob already know each other's ETH addresses — exchanged via a
+          <strong>messaging app</strong>, published on a <strong>website</strong>,
+          scanned a <strong>QR code</strong> at a meetup, or listed in a <strong>DAO directory</strong>.
+        </div>
+        <div class="use-case-flow">
+          <div class="flow-step">Both publish identities <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Both resolve each other <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Send and read messages directly <span class="net-tag swarm">Swarm</span></div>
+        </div>
+        <div class="use-case-modules">
+          <span class="mod used">identity</span>
+          <span class="mod used">mailbox</span>
+          <span class="mod unused">registry</span>
+          <span class="mod used">crypto</span>
+        </div>
+        <div class="use-case-meta">
+          <strong>Cost:</strong> Postage stamps only — <strong>no gas, no blockchain</strong>
+          <br/><strong>Demo steps:</strong> 1–5, 7–8 (skip step 6)
+          <br/><br/>
+          <em>This is the lightweight path. If both parties know each other, the entire system works without touching a blockchain.</em>
+        </div>
+      </div>
+
+      <!-- Use Case 3: Public inbox -->
+      <div class="use-case-card">
+        <div class="use-case-header uc-full">
+          <h3>Public Inbox — Discoverable by Address</h3>
+          <span class="uc-badge">Swarm + Gnosis Chain</span>
+        </div>
+        <div class="use-case-scenario">
+          A user or project publishes their ETH address publicly — on their <strong>website</strong>,
+          in their <strong>app's about page</strong>, or in a <strong>DAO profile</strong>.
+          Anyone who knows the address can send them encrypted messages.
+        </div>
+        <div class="use-case-flow">
+          <div class="flow-step">Recipient publishes identity (one-time) <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Sender resolves recipient <span class="net-tag swarm">Swarm</span></div>
+          <div class="flow-step">Sender sends message + notification <span class="net-tag swarm">Swarm</span> <span class="net-tag chain">Gnosis</span></div>
+          <div class="flow-step">Recipient polls → discovers sender <span class="net-tag chain">Gnosis</span></div>
+          <div class="flow-step">Recipient reads messages <span class="net-tag swarm">Swarm</span></div>
+        </div>
+        <div class="use-case-modules">
+          <span class="mod used">identity</span>
+          <span class="mod used">mailbox</span>
+          <span class="mod used">registry</span>
+          <span class="mod used">crypto</span>
+        </div>
+        <div class="use-case-meta">
+          <strong>Cost:</strong> Sender pays ~22k gas for first contact; subsequent messages are free (Swarm only)
+          <br/><strong>Demo steps:</strong> All (1–8)
+          <br/><br/>
+          <em>The registry acts as a permissionless inbox — anyone can notify, spam is filtered by failed ECIES decryption. No server needed.</em>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="demo-title">Interactive Demo</h2>
+    <p class="section-subtitle">Try the flow below. Steps are numbered to match the "Sharing with a stranger" use case. For "Known contacts", skip step 6.</p>
+  </section>
+
   <main class="split">
     <!-- ─── ALICE (left column) ────────────────────── -->
     <section id="alice" class="panel">
@@ -44,6 +148,7 @@
         <div class="card-header">
           <span class="step-num">1</span>
           <h3>Publish Identity (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
         </div>
         <div class="card-body">
           <button id="alice-publish" disabled>Publish to Swarm</button>
@@ -68,6 +173,7 @@
         <div class="card-header">
           <span class="step-num">3</span>
           <h3>Discover Bob (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
         </div>
         <div class="card-body">
           <button id="alice-resolve" disabled>Resolve Bob's Identity</button>
@@ -92,6 +198,7 @@
         <div class="card-header">
           <span class="step-num">4</span>
           <h3>Send Message to Bob (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
         </div>
         <div class="card-body">
           <input id="alice-msg-subject" type="text" placeholder="Subject" value="Hello Bob" disabled />
@@ -120,6 +227,7 @@
         <div class="card-header">
           <span class="step-num">6</span>
           <h3>Notify Bob (On-Chain)</h3>
+          <span class="uc-tags">Stranger sharing, Public inbox</span>
         </div>
         <div class="card-body">
           <button id="alice-notify" disabled>Send Notification</button>
@@ -149,6 +257,7 @@
         <div class="card-header">
           <span class="step-num">8</span>
           <h3>Check Inbox (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
         </div>
         <div class="card-body">
           <button id="alice-inbox" disabled>Check Inbox</button>
@@ -178,6 +287,7 @@
         <div class="card-header">
           <span class="step-num">2</span>
           <h3>Publish Identity (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
         </div>
         <div class="card-body">
           <button id="bob-publish" disabled>Publish to Swarm</button>
@@ -198,6 +308,7 @@
         <div class="card-header">
           <span class="step-num">3</span>
           <h3>Discover Alice (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
         </div>
         <div class="card-body">
           <button id="bob-resolve" disabled>Resolve Alice's Identity</button>
@@ -219,6 +330,7 @@
         <div class="card-header">
           <span class="step-num">5</span>
           <h3>Read Messages from Alice (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
         </div>
         <div class="card-body">
           <button id="bob-read" disabled>Check Inbox</button>
@@ -243,6 +355,7 @@
         <div class="card-header">
           <span class="step-num">6</span>
           <h3>Poll Notifications (on-chain)</h3>
+          <span class="uc-tags">Stranger sharing, Public inbox</span>
         </div>
         <div class="card-body">
           <button id="bob-poll" disabled>Poll Registry</button>
@@ -270,6 +383,7 @@
         <div class="card-header">
           <span class="step-num">7</span>
           <h3>Reply to Alice (on Swarm)</h3>
+          <span class="uc-tags">All scenarios</span>
         </div>
         <div class="card-body">
           <input id="bob-msg-subject" type="text" placeholder="Subject" value="Re: Hello Bob" disabled />
