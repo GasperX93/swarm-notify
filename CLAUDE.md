@@ -28,7 +28,7 @@ SENDING A MESSAGE (Bob → Alice):
     │
     ├─ 1. identity.resolve(bee, aliceEthAddress)
     │     └─ reads feed at keccak256("swarm-identity-" + aliceEthAddress)
-    │     └─ returns: { walletPublicKey, beePublicKey, overlay }
+    │     └─ returns: { walletPublicKey, beePublicKey }
     │
     ├─ 2. crypto.deriveSharedSecret(bobPrivateKey, aliceWalletPublicKey)
     │     └─ ECDH → 32-byte shared secret (both parties derive the same one)
@@ -40,11 +40,11 @@ SENDING A MESSAGE (Bob → Alice):
     │     └─ upload to Swarm → reference hash
     │
     ├─ 5. bee.makeFeedWriter(topic, signer).upload(stamp, reference)
-    │     └─ topic = keccak256(bobOverlay + aliceOverlay + "swarm-notify")
+    │     └─ topic = keccak256(bobEthAddress + aliceEthAddress + "swarm-notify")
     │     └─ updates Bob→Alice mailbox feed
     │
     └─ 6. registry.sendNotification(provider, aliceEthAddress, payload, bobPrivateKey)
-          └─ ECIES-encrypt { sender, overlay, feedTopic } with Alice's publicKey
+          └─ ECIES-encrypt { sender } with Alice's publicKey
           └─ call notify(keccak256(aliceEthAddress), encryptedBlob) on Gnosis Chain
           └─ only needed for FIRST contact
 
@@ -58,7 +58,7 @@ RECEIVING A MESSAGE (Alice checks):
     │     └─ auto-add as contacts
     │
     ├─ 2. For each contact: mailbox.readMessages(bee, signer, contact)
-    │     └─ topic = keccak256(contactOverlay + aliceOverlay + "swarm-notify")
+    │     └─ topic = keccak256(contactEthAddress + aliceEthAddress + "swarm-notify")
     │     └─ read feed → download blob → ECDH derive secret → AES-GCM decrypt
     │     └─ returns: Message[]
     │
@@ -69,10 +69,10 @@ RECEIVING A MESSAGE (Alice checks):
 
 ```
 Identity feed:  keccak256("swarm-identity-" + ethAddress)
-Mailbox feed:   keccak256(senderOverlay + recipientOverlay + "swarm-notify")
+Mailbox feed:   keccak256(senderEthAddress + recipientEthAddress + "swarm-notify")
 ```
 
-Identity feeds are keyed by ETH address (stable across devices), not overlay (changes per Bee installation).
+Both feed types are keyed by ETH address — stable across devices and Bee installations.
 
 ### Encryption
 
@@ -105,7 +105,6 @@ These are the shared interfaces. Every module uses them.
 interface SwarmIdentity {
   walletPublicKey: string    // compressed secp256k1 (66 hex) — for ECDH encryption
   beePublicKey: string       // Bee node public key — for ACT grantee lists
-  overlay: string            // Bee overlay address — for mailbox feed topics
   ethAddress?: string        // publisher's ETH address (optional, derivable from feed)
 }
 
@@ -116,7 +115,7 @@ interface Message {
   subject: string
   body: string
   ts: number                 // unix timestamp ms
-  sender: string             // sender's overlay address
+  sender: string             // sender's ETH address
   type?: 'message' | 'drive-share'  // default: 'message'
   attachments?: Attachment[]
   // drive-share specific
@@ -139,7 +138,6 @@ interface Contact {
   nickname: string
   walletPublicKey: string    // cached from identity feed
   beePublicKey: string       // cached from identity feed
-  overlay: string            // cached from identity feed
   ensName?: string
   addedAt: number            // unix timestamp ms
 }
@@ -148,8 +146,6 @@ interface Contact {
 
 interface NotificationPayload {
   sender: string             // sender's ETH address
-  overlay: string            // sender's overlay
-  feedTopic: string          // mailbox feed topic to read
 }
 
 // ─── Crypto ──────────────────────────────────────────────────────
@@ -202,10 +198,10 @@ function feedTopic(ethAddress: string): string  // returns keccak256("swarm-iden
 
 // ─── mailbox.ts ──────────────────────────────────────────────────
 
-function send(bee: Bee, signer: string | Uint8Array, stamp: string, myPrivateKey: Uint8Array, myOverlay: string, recipient: Contact, message: Omit<Message, 'v' | 'ts' | 'sender'>): Promise<void>
-function readMessages(bee: Bee, myPrivateKey: Uint8Array, myOverlay: string, contact: Contact): Promise<Message[]>
-function checkInbox(bee: Bee, myPrivateKey: Uint8Array, myOverlay: string, contacts: Contact[]): Promise<{ contact: Contact; messages: Message[] }[]>
-function feedTopic(senderOverlay: string, recipientOverlay: string): string
+function send(bee: Bee, signer: string | Uint8Array, stamp: string, myPrivateKey: Uint8Array, myEthAddress: string, recipient: Contact, message: Omit<Message, 'v' | 'ts' | 'sender'>): Promise<void>
+function readMessages(bee: Bee, myPrivateKey: Uint8Array, myEthAddress: string, contact: Contact): Promise<Message[]>
+function checkInbox(bee: Bee, myPrivateKey: Uint8Array, myEthAddress: string, contacts: Contact[]): Promise<{ contact: Contact; messages: Message[] }[]>
+function feedTopic(senderEthAddress: string, recipientEthAddress: string): string
 
 // ─── contacts.ts ─────────────────────────────────────────────────
 // ContactStore is an in-memory class. Host apps handle persistence.
@@ -215,7 +211,7 @@ class ContactStore {
   add(ethAddress: string, nickname: string, identity: SwarmIdentity): Contact
   remove(ethAddress: string): void
   list(): Contact[]
-  update(ethAddress: string, changes: Partial<Pick<Contact, 'nickname' | 'overlay' | 'walletPublicKey' | 'beePublicKey'>>): Contact
+  update(ethAddress: string, changes: Partial<Pick<Contact, 'nickname' | 'walletPublicKey' | 'beePublicKey'>>): Contact
   export(): Contact[]
 }
 
@@ -299,7 +295,7 @@ registry.ts (depends on: crypto, NotifyProvider interface — no ethers, no Swar
 
 ## Key Design Decisions
 
-1. **ETH address as primary identifier, not overlay.** Overlay changes per Bee installation. ETH address is portable across devices.
+1. **ETH address as sole identifier.** Overlay is not used anywhere — identity, mailbox feed topics, and notifications all key on ETH address. This means the same wallet on different Bee nodes shares one inbox.
 
 2. **Two feeds per conversation.** Alice→Bob and Bob→Alice are separate feeds (each owned by the sender). Merge by timestamp to get full conversation.
 

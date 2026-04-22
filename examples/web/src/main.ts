@@ -152,12 +152,6 @@ $('btn-init').addEventListener('click', async () => {
   alice.otherPanel = bob
   bob.otherPanel = alice
 
-  // Fetch overlay from Bee node (shared — same node)
-  await alice.fetchOverlay(bee)
-  // Bob uses a synthetic overlay (different identity, same node)
-  bob.overlay = bytesToHex(secp.getPublicKey(bobPrivKey, true)).slice(0, 32)
-  logBob(`Overlay (synthetic): <code>${short(bob.overlay!)}</code>`)
-
   // Display identity info with full addresses
   $('alice-eth').textContent = alice.ethAddress
   $('alice-pub').textContent = short(alice.publicKeyHex, 12)
@@ -210,7 +204,7 @@ $('alice-resolve').addEventListener('click', () =>
     if (resolved) {
       setResult(
         'alice-resolve-result',
-        `Found Bob!<br/>PubKey: <code>${short(resolved.walletPublicKey, 12)}</code><br/>Overlay: <code>${short(resolved.overlay)}</code>`,
+        `Found Bob!<br/>PubKey: <code>${short(resolved.walletPublicKey, 12)}</code>`,
         'success',
       )
       enableButtons('alice-send', 'alice-notify', 'alice-inbox')
@@ -227,7 +221,7 @@ $('bob-resolve').addEventListener('click', () =>
     if (resolved) {
       setResult(
         'bob-resolve-result',
-        `Found Alice!<br/>PubKey: <code>${short(resolved.walletPublicKey, 12)}</code><br/>Overlay: <code>${short(resolved.overlay)}</code>`,
+        `Found Alice!<br/>PubKey: <code>${short(resolved.walletPublicKey, 12)}</code>`,
         'success',
       )
       enableButtons('bob-send', 'bob-read', 'bob-poll')
@@ -320,7 +314,7 @@ $('bob-poll').addEventListener('click', () =>
       setResult('bob-poll-result', 'No notifications found.', 'info')
     } else {
       const lines = notifications.map(
-        (n) => `Sender: <code>${short(n.payload.sender)}</code><br/>Overlay: <code>${short(n.payload.overlay)}</code><br/>Block: ${n.blockNumber}`,
+        (n) => `Sender: <code>${short(n.payload.sender)}</code><br/>Block: ${n.blockNumber}`,
       )
       setResult('bob-poll-result', `Found ${notifications.length}:<br/><br/>${lines.join('<br/><br/>')}`, 'success')
     }

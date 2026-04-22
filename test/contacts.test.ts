@@ -4,7 +4,6 @@ import { ContactStore } from '../src/contacts'
 const mockIdentity = {
   walletPublicKey: '02' + 'ab'.repeat(32),
   beePublicKey: '04' + 'cd'.repeat(32),
-  overlay: 'ff'.repeat(32),
 }
 
 let store: ContactStore
@@ -21,7 +20,6 @@ describe('add', () => {
     expect(contact.nickname).toBe('Alice')
     expect(contact.walletPublicKey).toBe(mockIdentity.walletPublicKey)
     expect(contact.beePublicKey).toBe(mockIdentity.beePublicKey)
-    expect(contact.overlay).toBe(mockIdentity.overlay)
     expect(contact.addedAt).toBeGreaterThan(0)
   })
 
@@ -83,17 +81,6 @@ describe('update', () => {
 
     expect(updated.nickname).toBe('Alice Updated')
     expect(store.list()[0].nickname).toBe('Alice Updated')
-  })
-
-  it('updates overlay (key refresh)', () => {
-    store.add('0x1111111111111111111111111111111111111111', 'Alice', mockIdentity)
-
-    const newOverlay = 'aa'.repeat(32)
-    const updated = store.update('0x1111111111111111111111111111111111111111', {
-      overlay: newOverlay,
-    })
-
-    expect(updated.overlay).toBe(newOverlay)
   })
 
   it('throws if contact not found', () => {

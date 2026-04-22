@@ -32,7 +32,6 @@ describe('publish', () => {
       publish(bee, '0x' + 'aa'.repeat(32), 'stamp123', {
         walletPublicKey: '02' + 'ab'.repeat(32),
         beePublicKey: '04' + 'cd'.repeat(32),
-        overlay: 'ff'.repeat(32),
       }),
     ).rejects.toThrow('ethAddress is required')
   })
@@ -45,7 +44,6 @@ describe('publish', () => {
     const identity = {
       walletPublicKey: '02' + 'ab'.repeat(32),
       beePublicKey: '04' + 'cd'.repeat(32),
-      overlay: 'ff'.repeat(32),
       ethAddress: '0x1234567890abcdef1234567890abcdef12345678',
     }
 
@@ -62,7 +60,6 @@ describe('publish', () => {
     const parsed = JSON.parse(new TextDecoder().decode(payload))
     expect(parsed.walletPublicKey).toBe(identity.walletPublicKey)
     expect(parsed.beePublicKey).toBe(identity.beePublicKey)
-    expect(parsed.overlay).toBe(identity.overlay)
   })
 })
 
@@ -71,7 +68,6 @@ describe('resolve', () => {
     const identityData = {
       walletPublicKey: '02' + 'ab'.repeat(32),
       beePublicKey: '04' + 'cd'.repeat(32),
-      overlay: 'ff'.repeat(32),
     }
     const payload = new TextEncoder().encode(JSON.stringify(identityData))
     const downloadPayload = vi.fn().mockResolvedValue({
@@ -86,7 +82,6 @@ describe('resolve', () => {
     expect(result).not.toBeNull()
     expect(result!.walletPublicKey).toBe(identityData.walletPublicKey)
     expect(result!.beePublicKey).toBe(identityData.beePublicKey)
-    expect(result!.overlay).toBe(identityData.overlay)
     expect(result!.ethAddress).toBe(ethAddress.toLowerCase())
   })
 

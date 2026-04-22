@@ -83,7 +83,6 @@ Before others can message you, publish your public keys to a discoverable Swarm 
 const myIdentity = {
   walletPublicKey: myCompressedPublicKey,  // 66 hex chars, compressed secp256k1
   beePublicKey: beeNodePublicKey,          // from bee.getNodeAddresses()
-  overlay: myOverlayAddress,               // from bee.getNodeAddresses()
   ethAddress: myEthAddress,                // your wallet address
 }
 
@@ -93,6 +92,8 @@ await identity.publish(bee, myPrivateKeyHex, myPostageStampId, myIdentity)
 This writes a small JSON document to a deterministic feed at `keccak256("swarm-identity-" + ethAddress)`. Anyone who knows your ETH address can now look you up.
 
 This is a one-time operation. Only re-publish if your keys change (e.g., new Bee node).
+
+**Multi-device:** ETH address is cross-device-stable — the same wallet on different machines shares one inbox. Identity and mailbox feeds are keyed by ETH address, not by Bee overlay, so switching Bee nodes does not change your address or break existing conversations.
 
 ## 3. Discover someone
 
@@ -108,7 +109,6 @@ if (!alice) {
 
 // alice.walletPublicKey — for ECDH encryption
 // alice.beePublicKey    — for ACT grantee lists
-// alice.overlay         — for mailbox feed topics
 ```
 
 **ENS support:** Swarm Notify takes ETH addresses only. If your app supports ENS, resolve the name first:
@@ -160,7 +160,7 @@ await mailbox.send(
   myPrivateKeyHex,       // feed signing key
   myPostageStampId,
   myEncryptionPrivKey,   // Uint8Array — for ECDH shared secret
-  myOverlayAddress,
+  myEthAddress,
   aliceContact,
   {
     subject: 'Hello from my app',
@@ -183,7 +183,7 @@ When your app shares an encrypted drive, notify the recipient:
 
 ```typescript
 await mailbox.send(
-  bee, signer, stamp, myPrivateKey, myOverlay, aliceContact,
+  bee, signer, stamp, myPrivateKey, myEthAddress, aliceContact,
   {
     subject: 'Shared: Project files',
     body: 'I shared a drive with you.',
@@ -203,7 +203,7 @@ Read messages from a specific contact:
 const messages = await mailbox.readMessages(
   bee,
   myEncryptionPrivKey,
-  myOverlayAddress,
+  myEthAddress,
   aliceContact,
 )
 
@@ -224,7 +224,7 @@ Check inbox across all contacts:
 const inbox = await mailbox.checkInbox(
   bee,
   myEncryptionPrivKey,
-  myOverlayAddress,
+  myEthAddress,
   contacts.list(),
 )
 
@@ -249,8 +249,6 @@ await registry.sendNotification(
   aliceContact.ethAddress,
   {
     sender: myEthAddress,
-    overlay: myOverlayAddress,
-    feedTopic: mailbox.feedTopic(myOverlayAddress, aliceContact.overlay),
   },
 )
 ```
@@ -299,7 +297,6 @@ const contacts = new ContactStore()
 await identity.publish(bee, bobSignerKey, bobStamp, {
   walletPublicKey: bobPublicKeyHex,
   beePublicKey: bobBeePublicKey,
-  overlay: bobOverlay,
   ethAddress: bobEthAddress,
 })
 
@@ -308,7 +305,7 @@ const alice = await identity.resolve(bee, aliceEthAddress)
 const aliceContact = contacts.add(alice.ethAddress!, 'Alice', alice)
 
 // 3. Send message
-await mailbox.send(bee, bobSignerKey, bobStamp, bobPrivateKey, bobOverlay, aliceContact, {
+await mailbox.send(bee, bobSignerKey, bobStamp, bobPrivateKey, bobEthAddress, aliceContact, {
   subject: 'Hey Alice',
   body: 'Check out this shared drive!',
   type: 'drive-share',
@@ -321,7 +318,7 @@ await mailbox.send(bee, bobSignerKey, bobStamp, bobPrivateKey, bobOverlay, alice
 await registry.sendNotification(
   bobNotifyProvider, REGISTRY,
   hexToBytes(alice.walletPublicKey), alice.ethAddress!,
-  { sender: bobEthAddress, overlay: bobOverlay, feedTopic: mailbox.feedTopic(bobOverlay, alice.overlay) },
+  { sender: bobEthAddress },
 )
 
 // ── Alice's side ─────────────────────────────────────────────
@@ -338,7 +335,7 @@ for (const { payload } of notifications) {
 }
 
 // 7. Alice reads her inbox
-const inbox = await mailbox.checkInbox(bee, alicePrivateKey, aliceOverlay, contacts.list())
+const inbox = await mailbox.checkInbox(bee, alicePrivateKey, aliceEthAddress, contacts.list())
 for (const { contact, messages } of inbox) {
   for (const msg of messages) {
     console.log(`${contact.nickname}: ${msg.subject} — ${msg.body}`)

@@ -91,8 +91,6 @@ const CONTRACT_ADDRESS = '0x1234567890abcdef1234567890abcdef12345678'
 
 const SAMPLE_PAYLOAD: NotificationPayload = {
   sender: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-  overlay: 'abc123overlay',
-  feedTopic: 'feedtopic456',
 }
 
 // ─── Tests ──────────────────────────────────────────────────────
@@ -321,18 +319,12 @@ describe('pollNotifications', () => {
 
     const payload1: NotificationPayload = {
       sender: '0x1111111111111111111111111111111111111111',
-      overlay: 'overlay1',
-      feedTopic: 'topic1',
     }
     const payload2: NotificationPayload = {
       sender: '0x2222222222222222222222222222222222222222',
-      overlay: 'overlay2',
-      feedTopic: 'topic2',
     }
     const payload3: NotificationPayload = {
       sender: '0x3333333333333333333333333333333333333333',
-      overlay: 'overlay3',
-      feedTopic: 'topic3',
     }
 
     const enc1 = await eciesEncrypt(new TextEncoder().encode(JSON.stringify(payload1)), recipientPubKey)
@@ -363,8 +355,6 @@ describe('pollNotifications', () => {
 
     const validPayload: NotificationPayload = {
       sender: '0x1111111111111111111111111111111111111111',
-      overlay: 'overlay1',
-      feedTopic: 'topic1',
     }
 
     // Valid notification

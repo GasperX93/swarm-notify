@@ -14,7 +14,6 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { Bee } from '@ethersphere/bee-js'
 import * as secp from '@noble/secp256k1'
 import { bytesToHex } from '@noble/hashes/utils'
-import { keccak_256 } from '@noble/hashes/sha3'
 
 import * as identity from '../src/identity'
 import * as mailbox from '../src/mailbox'
@@ -86,13 +85,10 @@ let stamp: string
 let privateKey: Uint8Array
 let ethAddress: string
 let publicKeyHex: string
-let overlay: string
-
 // Two test identities — Alice (from DEPLOYER_PRIVATE_KEY) and Bob (generated)
 let bobPrivateKey: Uint8Array
 let bobPublicKeyHex: string
 let bobEthAddress: string
-let bobOverlay: string
 
 beforeAll(async () => {
   // Validate environment
@@ -121,15 +117,10 @@ beforeAll(async () => {
   ethAddress = getEthAddress(privateKey)
   publicKeyHex = bytesToHex(secp.getPublicKey(privateKey, true))
 
-  // Get overlay from Bee node
-  const addresses = await bee.getNodeAddresses()
-  overlay = String(addresses.overlay)
-
   // Bob's keys (generated)
   bobPrivateKey = secp.utils.randomPrivateKey()
   bobPublicKeyHex = bytesToHex(secp.getPublicKey(bobPrivateKey, true))
   bobEthAddress = getEthAddress(bobPrivateKey)
-  bobOverlay = bytesToHex(keccak_256(secp.getPublicKey(bobPrivateKey, true))).slice(0, 32)
 
   console.log('E2E test config:')
   console.log(`  Bee:      ${BEE_URL}`)
@@ -146,7 +137,6 @@ describe('identity: real Bee node', () => {
     const swarmIdentity = {
       walletPublicKey: publicKeyHex,
       beePublicKey: publicKeyHex,
-      overlay,
       ethAddress,
     }
 
@@ -158,7 +148,6 @@ describe('identity: real Bee node', () => {
 
     expect(resolved).not.toBeNull()
     expect(resolved!.walletPublicKey).toBe(publicKeyHex)
-    expect(resolved!.overlay).toBe(overlay)
   }, 30000)
 
   it('returns null for non-existent identity', async () => {
@@ -178,13 +167,12 @@ describe('mailbox: real Bee node', () => {
       nickname: 'Bob',
       walletPublicKey: bobPublicKeyHex,
       beePublicKey: bobPublicKeyHex,
-      overlay: bobOverlay,
       addedAt: Date.now(),
     }
 
     // Alice sends a message to Bob (signer = private key hex)
     const testSubject = `E2E test ${Date.now()}`
-    await mailbox.send(bee, PRIVATE_KEY_HEX, stamp, privateKey, overlay, bobContact, {
+    await mailbox.send(bee, PRIVATE_KEY_HEX, stamp, privateKey, ethAddress, bobContact, {
       subject: testSubject,
       body: 'End-to-end test message via real Bee node',
     })
@@ -195,10 +183,9 @@ describe('mailbox: real Bee node', () => {
       nickname: 'Alice',
       walletPublicKey: publicKeyHex,
       beePublicKey: publicKeyHex,
-      overlay,
       addedAt: Date.now(),
     }
-    const messages = await mailbox.readMessages(bee, bobPrivateKey, bobOverlay, aliceContact)
+    const messages = await mailbox.readMessages(bee, bobPrivateKey, bobEthAddress, aliceContact)
 
     expect(messages).toHaveLength(1)
     expect(messages[0].subject).toBe(testSubject)
@@ -217,8 +204,6 @@ describe('registry: real Gnosis Chain', () => {
 
     const payload: NotificationPayload = {
       sender: ethAddress,
-      overlay,
-      feedTopic: mailbox.feedTopic(overlay, bobOverlay),
     }
 
     const txHash = await registry.sendNotification(
@@ -259,8 +244,6 @@ describe('registry: real Gnosis Chain', () => {
     // Find our notification
     const ours = notifications.find((n) => n.payload.sender === ethAddress)
     expect(ours).toBeDefined()
-    expect(ours!.payload.overlay).toBe(overlay)
-    expect(ours!.payload.feedTopic).toBe(mailbox.feedTopic(overlay, bobOverlay))
     expect(ours!.blockNumber).toBe(notificationBlockNumber)
   }, 30000)
 })
@@ -275,13 +258,11 @@ describe('full E2E flow: identity → message → notification → discovery', (
     const charliePrivateKey = secp.utils.randomPrivateKey()
     const charliePublicKeyHex = bytesToHex(secp.getPublicKey(charliePrivateKey, true))
     const charlieEthAddress = getEthAddress(charliePrivateKey)
-    const charlieOverlay = bytesToHex(keccak_256(secp.getPublicKey(charliePrivateKey, true))).slice(0, 32)
 
     // 1. Ensure Alice's identity is published
     await identity.publish(bee, PRIVATE_KEY_HEX, stamp, {
       walletPublicKey: publicKeyHex,
       beePublicKey: publicKeyHex,
-      overlay,
       ethAddress,
     })
     const aliceId = await identity.resolve(bee, ethAddress)
@@ -293,24 +274,22 @@ describe('full E2E flow: identity → message → notification → discovery', (
       nickname: 'Charlie',
       walletPublicKey: charliePublicKeyHex,
       beePublicKey: charliePublicKeyHex,
-      overlay: charlieOverlay,
       addedAt: Date.now(),
     }
 
     const testSubject = `Full flow ${Date.now()}`
-    await mailbox.send(bee, PRIVATE_KEY_HEX, stamp, privateKey, overlay, charlieContact, {
+    await mailbox.send(bee, PRIVATE_KEY_HEX, stamp, privateKey, ethAddress, charlieContact, {
       subject: testSubject,
       body: 'Full E2E flow test',
     })
 
     // 3. Alice sends on-chain notification to Charlie
-    const feedTopic = mailbox.feedTopic(overlay, charlieOverlay)
     const txHash = await registry.sendNotification(
       provider,
       CONTRACT_ADDRESS,
       secp.getPublicKey(charliePrivateKey, true),
       charlieEthAddress,
-      { sender: ethAddress, overlay, feedTopic },
+      { sender: ethAddress },
     )
     console.log(`  Full flow notification tx: ${txHash}`)
 
@@ -343,10 +322,9 @@ describe('full E2E flow: identity → message → notification → discovery', (
       nickname: 'Alice',
       walletPublicKey: discoveredAlice!.walletPublicKey,
       beePublicKey: discoveredAlice!.beePublicKey,
-      overlay: discoveredAlice!.overlay,
       addedAt: Date.now(),
     }
-    const messages = await mailbox.readMessages(bee, charliePrivateKey, charlieOverlay, aliceContact)
+    const messages = await mailbox.readMessages(bee, charliePrivateKey, charlieEthAddress, aliceContact)
 
     expect(messages).toHaveLength(1)
     expect(messages[0].subject).toBe(testSubject)

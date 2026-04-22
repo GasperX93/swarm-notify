@@ -34,7 +34,6 @@ export class Panel {
   readonly publicKey: Uint8Array
   readonly publicKeyHex: string
   readonly ethAddress: string
-  overlay: string | null = null
   otherPanel: Panel | null = null
   contact: Contact | null = null // the other party
 
@@ -49,23 +48,12 @@ export class Panel {
     this.logger = logger
   }
 
-  /** Fetch overlay address from Bee node. */
-  async fetchOverlay(bee: Bee): Promise<string> {
-    const addresses = await bee.getNodeAddresses()
-    this.overlay = String(addresses.overlay)
-    this.logger(`Overlay fetched: <code>${short(this.overlay)}</code>`)
-    return this.overlay
-  }
-
   /** Publish identity to Swarm feed. */
   async publishIdentity(bee: Bee, stamp: string): Promise<void> {
-    if (!this.overlay) throw new Error('Overlay not fetched')
-
     const signerHex = '0x' + bytesToHex(this.privateKey)
     const swarmId: SwarmIdentity = {
       walletPublicKey: this.publicKeyHex,
       beePublicKey: this.publicKeyHex,
-      overlay: this.overlay,
       ethAddress: this.ethAddress,
     }
 
@@ -96,25 +84,24 @@ export class Panel {
       nickname: this.otherPanel.name,
       walletPublicKey: resolved.walletPublicKey,
       beePublicKey: resolved.beePublicKey,
-      overlay: resolved.overlay,
       addedAt: Date.now(),
     }
 
-    this.logger(`Resolved ${this.otherPanel.name}: pubKey=<code>${short(resolved.walletPublicKey)}</code>, overlay=<code>${short(resolved.overlay)}</code>`)
+    this.logger(`Resolved ${this.otherPanel.name}: pubKey=<code>${short(resolved.walletPublicKey)}</code>`)
     return resolved
   }
 
   /** Send an encrypted message to the other party. */
   async sendMessage(bee: Bee, stamp: string, subject: string, body: string): Promise<void> {
-    if (!this.contact || !this.overlay) throw new Error('Not ready')
+    if (!this.contact) throw new Error('Not ready')
 
     const signerHex = '0x' + bytesToHex(this.privateKey)
-    const feedTopic = mailbox.feedTopic(this.overlay, this.contact.overlay)
+    const feedTopic = mailbox.feedTopic(this.ethAddress, this.contact.ethAddress)
     this.logger(`Mailbox feed topic: <code>${short(feedTopic)}</code>`)
     this.logger(`ECDH: deriving shared secret from ${this.name}'s privKey + ${this.contact.nickname}'s pubKey`)
     this.logger(`AES-256-GCM encrypting message...`)
 
-    await mailbox.send(bee, signerHex, stamp, this.privateKey, this.overlay, this.contact, {
+    await mailbox.send(bee, signerHex, stamp, this.privateKey, this.ethAddress, this.contact, {
       subject,
       body,
     })
@@ -124,12 +111,12 @@ export class Panel {
 
   /** Read messages from the other party's mailbox feed. */
   async readMessages(bee: Bee): Promise<Message[]> {
-    if (!this.contact || !this.overlay) throw new Error('Not ready')
+    if (!this.contact) throw new Error('Not ready')
 
     this.logger(`Reading ${this.contact.nickname}'s mailbox feed...`)
     this.logger(`ECDH: deriving shared secret from ${this.name}'s privKey + ${this.contact.nickname}'s pubKey`)
 
-    const messages = await mailbox.readMessages(bee, this.privateKey, this.overlay, this.contact)
+    const messages = await mailbox.readMessages(bee, this.privateKey, this.ethAddress, this.contact)
 
     if (messages.length === 0) {
       this.logger(`No messages from ${this.contact.nickname}`)
@@ -145,15 +132,12 @@ export class Panel {
 
   /** Send an on-chain notification to the other party. */
   async sendNotification(provider: NotifyProvider, contractAddress: string): Promise<string> {
-    if (!this.contact || !this.overlay || !this.otherPanel) throw new Error('Not ready')
+    if (!this.contact || !this.otherPanel) throw new Error('Not ready')
 
     const recipientPubKey = hexToBytes(this.contact.walletPublicKey)
-    const feedTopic = mailbox.feedTopic(this.overlay, this.contact.overlay)
 
     const payload: NotificationPayload = {
       sender: this.ethAddress,
-      overlay: this.overlay,
-      feedTopic,
     }
 
     this.logger(`ECIES-encrypting notification payload with ${this.contact.nickname}'s public key`)
