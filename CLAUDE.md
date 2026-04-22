@@ -277,6 +277,7 @@ registry.ts (depends on: crypto, NotifyProvider interface — no ethers, no Swar
 - When code or logic changes in any module (`src/`), check whether **all** of the following need updating:
   - Reference CLI app (`examples/cli.ts`)
   - Web UI reference app (`examples/web/`) — including step descriptions, use case cards, privacy table, and flow diagrams
+  - Agent integration guide (`docs/agent-integration.md`) and polling agent example (`examples/agent/`)
   - Unit tests, integration tests (`test/integration.test.ts`), and E2E tests (`test/e2e.test.ts`)
   - Playwright tests (`examples/web/tests/`)
 

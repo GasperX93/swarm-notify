@@ -14,10 +14,13 @@
       <strong>How discovery works:</strong>
       If you already know someone's ETH address (shared via chat, website, QR code), you can look up their
       public keys on Swarm and start messaging immediately — <strong>no blockchain needed</strong>.
-      The on-chain notification registry (steps 6) is only for <em>first-contact discovery</em>:
+      The on-chain notification registry (steps 7–8) is only for <em>first-contact discovery</em>:
       when a stranger sends you a message and you need a way to find out they exist. Think of it like
       email vs. a phone book — you can email someone directly if you have their address, but the phone book
       helps strangers find you.
+      <br/><br/>
+      <strong>Multi-device:</strong> Same wallet on multiple devices shares the same inbox — feed topics are
+      derived from ETH address, not from the Bee node. Switch devices without losing your conversations.
     </div>
     <div class="config">
       <label>Bee URL <input id="cfg-bee" type="text" value="http://localhost:1633" /></label>
@@ -435,7 +438,46 @@
     <div class="bob-side">
       <div class="spacer-cell"><span class="spacer-hint">reply sent in step 9</span></div>
     </div>
+
+    <!-- Conclusion -->
+    <div class="alice-side conclusion-cell">
+      <div class="conclusion-box">
+        <strong>Conversation established.</strong> Alice and Bob can now exchange messages
+        using only steps 5–6 and 9–10 — no further identity or registry setup needed.
+        For autonomous agents, see the <a href="https://github.com/GasperX93/swarm-notify/blob/development/docs/agent-integration.md">agent integration guide</a>.
+      </div>
+    </div>
+    <div class="bob-side conclusion-cell">
+      <div class="conclusion-box">
+        <strong>Source code:</strong>
+        <a href="https://github.com/GasperX93/swarm-notify/blob/development/src/identity.ts">identity.ts</a> ·
+        <a href="https://github.com/GasperX93/swarm-notify/blob/development/src/mailbox.ts">mailbox.ts</a> ·
+        <a href="https://github.com/GasperX93/swarm-notify/blob/development/src/registry.ts">registry.ts</a> ·
+        <a href="https://github.com/GasperX93/swarm-notify/blob/development/src/crypto.ts">crypto.ts</a>
+      </div>
+    </div>
   </main>
+
+  <!-- ─── Troubleshooting ──────────────────────────── -->
+  <section class="troubleshooting">
+    <h3>Troubleshooting</h3>
+    <dl>
+      <dt>"Cannot connect to Bee"</dt>
+      <dd>Check that your Bee node is running at the configured URL. Light mode is sufficient: <code>bee start --bee-mode light</code></dd>
+
+      <dt>"No usable stamp"</dt>
+      <dd>Buy a postage stamp: <code>curl -s -X POST http://localhost:1633/stamps/10000000/20</code> (amount/depth). Or check <code>http://localhost:1633/stamps</code> for existing batches.</dd>
+
+      <dt>CORS errors in browser console</dt>
+      <dd>Start Bee with CORS enabled: <code>bee start --cors-allowed-origins '*'</code></dd>
+
+      <dt>"Insufficient funds" on Notify step</dt>
+      <dd>The on-chain notification requires xDAI on Gnosis Chain. Paste a funded private key in the "Funded Key" config field. In production, apps use the Bee node's wallet.</dd>
+
+      <dt>Notification confirmation timeout</dt>
+      <dd>The transaction was likely sent but the RPC is slow to confirm. Bob can try polling — the notification may already be on-chain.</dd>
+    </dl>
+  </section>
 
   <footer>
     <div class="log-header">
