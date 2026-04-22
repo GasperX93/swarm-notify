@@ -13,6 +13,7 @@ import 'dotenv/config'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { Bee } from '@ethersphere/bee-js'
 import * as secp from '@noble/secp256k1'
+import { keccak_256 } from '@noble/hashes/sha3'
 import { bytesToHex } from '@noble/hashes/utils'
 
 import * as identity from '../src/identity'
