@@ -271,20 +271,30 @@ $('alice-notify').addEventListener('click', () =>
 
     try {
       const txHash = await alice.sendNotification(provider, contractAddress)
-      setResult('alice-notify-result', `Tx: <code>${short(txHash)}</code><br/>Waiting for confirmation...`, 'info')
+      setResult('alice-notify-result', `Tx: <code>${short(txHash)}</code><br/>Waiting for confirmation (this may take up to 2 minutes)...`, 'info')
 
-      // Wait for mining
-      logAlice('Waiting for tx to be mined...')
+      // Wait for mining — Gnosis Chain blocks are ~5s but RPC can be slow
+      logAlice('Waiting for tx to be mined (up to 2 min)...')
       const { JsonRpcProvider } = await import('ethers')
       const ethProvider = new JsonRpcProvider(rpcUrl)
-      const receipt = await ethProvider.waitForTransaction(txHash, 1, 60000)
-      if (receipt) {
+      try {
+        const receipt = await ethProvider.waitForTransaction(txHash, 1, 120000)
+        if (receipt) {
+          setResult(
+            'alice-notify-result',
+            `Tx: <code>${short(txHash)}</code><br/>Block: ${receipt.blockNumber}<br/>Gas: ${receipt.gasUsed.toString()}`,
+            'success',
+          )
+          logAlice(`Mined in block ${receipt.blockNumber} (${receipt.gasUsed.toString()} gas)`)
+        }
+      } catch (waitErr) {
+        // Timeout waiting for confirmation — tx was sent but confirmation slow
         setResult(
           'alice-notify-result',
-          `Tx: <code>${short(txHash)}</code><br/>Block: ${receipt.blockNumber}<br/>Gas: ${receipt.gasUsed.toString()}`,
-          'success',
+          `Tx sent: <code>${short(txHash)}</code><br/>Confirmation timed out — the tx is likely pending. Bob can try polling.`,
+          'info',
         )
-        logAlice(`Mined in block ${receipt.blockNumber} (${receipt.gasUsed.toString()} gas)`)
+        logAlice(`Confirmation timed out for ${short(txHash)} — tx may still be pending`)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
