@@ -40,12 +40,15 @@ test.describe('Web Demo UI', () => {
     // Module checklists visible
     await expect(page.locator('.use-case-card').nth(1).locator('.mod.unused')).toContainText('registry')
 
-    // Both panels visible
-    await expect(page.locator('#alice h2')).toContainText('Alice')
-    await expect(page.locator('#bob h2')).toContainText('Bob')
+    // Both column headers visible
+    await expect(page.locator('.grid-header.alice-side h2')).toContainText('Alice')
+    await expect(page.locator('.grid-header.bob-side h2')).toContainText('Bob')
 
     // Step cards have use case tags
-    await expect(page.locator('#alice .card-header .uc-tags').first()).toContainText('All scenarios')
+    await expect(page.locator('.alice-side .card-header .uc-tags').first()).toContainText('All scenarios')
+
+    // Spacer cells visible for sequential steps
+    await expect(page.locator('.spacer-cell').first()).toBeVisible()
 
     // Event log
     await expect(page.locator('.log-header h3')).toContainText('Event Log')
