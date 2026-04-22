@@ -8,10 +8,13 @@ const FEED_SUFFIX = 'swarm-notify'
 
 /**
  * Compute the deterministic mailbox feed topic for a sender-recipient pair.
- * Topic: keccak256(senderOverlay + recipientOverlay + "swarm-notify")
+ * Topic: keccak256(senderEthAddress + recipientEthAddress + "swarm-notify")
+ *
+ * Uses ETH addresses (not overlays) so feed topics are stable across devices.
+ * Same wallet on different Bee nodes = same feed topics = same inbox.
  */
-export function feedTopic(senderOverlay: string, recipientOverlay: string): string {
-  const input = new TextEncoder().encode(senderOverlay.toLowerCase() + recipientOverlay.toLowerCase() + FEED_SUFFIX)
+export function feedTopic(senderEthAddress: string, recipientEthAddress: string): string {
+  const input = new TextEncoder().encode(senderEthAddress.toLowerCase() + recipientEthAddress.toLowerCase() + FEED_SUFFIX)
   return bytesToHex(keccak_256(input))
 }
 
@@ -60,7 +63,7 @@ export async function send(
   signer: string | Uint8Array,
   stamp: string,
   myPrivateKey: Uint8Array,
-  myOverlay: string,
+  myEthAddress: string,
   recipient: Contact,
   message: Omit<Message, 'v' | 'ts' | 'sender'>,
 ): Promise<void> {
@@ -68,8 +71,8 @@ export async function send(
   const recipientPubKeyBytes = hexToBytes(recipient.walletPublicKey)
   const sharedSecret = deriveSharedSecret(myPrivateKey, recipientPubKeyBytes)
 
-  // Compute feed topic (my overlay → their overlay)
-  const topic = feedTopic(myOverlay, recipient.overlay)
+  // Compute feed topic (my ethAddress → their ethAddress)
+  const topic = feedTopic(myEthAddress, recipient.ethAddress)
 
   // Get the writer's ETH address for reading existing messages
   const writer = bee.makeFeedWriter(topic, signer)
@@ -83,7 +86,7 @@ export async function send(
     v: 1,
     ...message,
     ts: Date.now(),
-    sender: myOverlay,
+    sender: myEthAddress,
   }
   existing.push(fullMessage)
 
@@ -108,7 +111,7 @@ export async function send(
 export async function readMessages(
   bee: Bee,
   myPrivateKey: Uint8Array,
-  myOverlay: string,
+  myEthAddress: string,
   contact: Contact,
 ): Promise<Message[]> {
   // Derive shared secret
@@ -116,7 +119,7 @@ export async function readMessages(
   const sharedSecret = deriveSharedSecret(myPrivateKey, contactPubKeyBytes)
 
   // Topic: contact→me (contact is sender)
-  const topic = feedTopic(contact.overlay, myOverlay)
+  const topic = feedTopic(contact.ethAddress, myEthAddress)
 
   // The feed owner is the contact's ETH address
   return readFeedMessages(bee, topic, contact.ethAddress, sharedSecret)
@@ -128,13 +131,13 @@ export async function readMessages(
 export async function checkInbox(
   bee: Bee,
   myPrivateKey: Uint8Array,
-  myOverlay: string,
+  myEthAddress: string,
   contacts: Contact[],
 ): Promise<{ contact: Contact; messages: Message[] }[]> {
   const results = await Promise.allSettled(
     contacts.map(async (contact) => ({
       contact,
-      messages: await readMessages(bee, myPrivateKey, myOverlay, contact),
+      messages: await readMessages(bee, myPrivateKey, myEthAddress, contact),
     })),
   )
 
