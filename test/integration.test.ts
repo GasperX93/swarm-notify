@@ -5,7 +5,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import * as secp from '@noble/secp256k1'
 import { bytesToHex } from '@noble/hashes/utils'
-import { keccak_256 } from '@noble/hashes/sha3'
 import { MockBee } from './helpers/mock-bee'
 import * as identity from '../src/identity'
 import * as mailbox from '../src/mailbox'
@@ -21,9 +20,8 @@ function makeUser() {
   const publicKey = secp.getPublicKey(privateKey, true)
   const publicKeyHex = bytesToHex(publicKey)
   const ethAddress = '0x' + bytesToHex(publicKey.slice(1, 21))
-  const overlay = bytesToHex(keccak_256(publicKey)).slice(0, 32)
   const beePublicKey = '04' + bytesToHex(secp.utils.randomPrivateKey())
-  return { privateKey, publicKey, publicKeyHex, ethAddress, overlay, beePublicKey }
+  return { privateKey, publicKey, publicKeyHex, ethAddress, beePublicKey }
 }
 
 function hexToBytes(hex: string): Uint8Array {
@@ -148,7 +146,6 @@ describe('identity: publish + resolve round-trip', () => {
     const swarmIdentity = {
       walletPublicKey: alice.publicKeyHex,
       beePublicKey: alice.beePublicKey,
-      overlay: alice.overlay,
       ethAddress: alice.ethAddress,
     }
 
@@ -161,7 +158,6 @@ describe('identity: publish + resolve round-trip', () => {
     expect(resolved).not.toBeNull()
     expect(resolved!.walletPublicKey).toBe(alice.publicKeyHex)
     expect(resolved!.beePublicKey).toBe(alice.beePublicKey)
-    expect(resolved!.overlay).toBe(alice.overlay)
   })
 
   it('returns null for non-existent identity', async () => {
@@ -177,7 +173,6 @@ describe('contacts: CRUD operations', () => {
     const swarmId = {
       walletPublicKey: alice.publicKeyHex,
       beePublicKey: alice.beePublicKey,
-      overlay: alice.overlay,
     }
 
     // Add
@@ -203,7 +198,6 @@ describe('contacts: CRUD operations', () => {
     const swarmId = {
       walletPublicKey: alice.publicKeyHex,
       beePublicKey: alice.beePublicKey,
-      overlay: alice.overlay,
     }
 
     contacts.add(alice.ethAddress, 'Alice', swarmId)
@@ -221,13 +215,11 @@ describe('full messaging flow: Alice ↔ Bob', () => {
     await identity.publish(bee as any, alice.ethAddress, STAMP, {
       walletPublicKey: alice.publicKeyHex,
       beePublicKey: alice.beePublicKey,
-      overlay: alice.overlay,
       ethAddress: alice.ethAddress,
     })
     await identity.publish(bee as any, bob.ethAddress, STAMP, {
       walletPublicKey: bob.publicKeyHex,
       beePublicKey: bob.beePublicKey,
-      overlay: bob.overlay,
       ethAddress: bob.ethAddress,
     })
 
@@ -243,7 +235,7 @@ describe('full messaging flow: Alice ↔ Bob', () => {
       alice.ethAddress, // signer
       STAMP,
       alice.privateKey,
-      alice.overlay,
+      alice.ethAddress,
       bobContact,
       { subject: 'Hello Bob', body: 'This is a test message from Alice' },
     )
@@ -252,14 +244,13 @@ describe('full messaging flow: Alice ↔ Bob', () => {
     const aliceContact = contacts.add(alice.ethAddress, 'Alice', {
       walletPublicKey: alice.publicKeyHex,
       beePublicKey: alice.beePublicKey,
-      overlay: alice.overlay,
     })
-    const messages = await mailbox.readMessages(bee as any, bob.privateKey, bob.overlay, aliceContact)
+    const messages = await mailbox.readMessages(bee as any, bob.privateKey, bob.ethAddress, aliceContact)
 
     expect(messages).toHaveLength(1)
     expect(messages[0].subject).toBe('Hello Bob')
     expect(messages[0].body).toBe('This is a test message from Alice')
-    expect(messages[0].sender).toBe(alice.overlay)
+    expect(messages[0].sender).toBe(alice.ethAddress)
     expect(messages[0].v).toBe(1)
     expect(messages[0].ts).toBeGreaterThan(0)
   })
@@ -274,7 +265,6 @@ describe('full messaging flow: Alice ↔ Bob', () => {
       nickname: 'Bob',
       walletPublicKey: bob.publicKeyHex,
       beePublicKey: bob.beePublicKey,
-      overlay: bob.overlay,
       addedAt: Date.now(),
     }
 
@@ -285,7 +275,7 @@ describe('full messaging flow: Alice ↔ Bob', () => {
         alice.ethAddress,
         STAMP,
         alice.privateKey,
-        alice.overlay,
+        alice.ethAddress,
         bobContact,
         { subject: `Message ${i}`, body: `Body ${i}` },
       )
@@ -297,10 +287,9 @@ describe('full messaging flow: Alice ↔ Bob', () => {
       nickname: 'Alice',
       walletPublicKey: alice.publicKeyHex,
       beePublicKey: alice.beePublicKey,
-      overlay: alice.overlay,
       addedAt: Date.now(),
     }
-    const messages = await mailbox.readMessages(bee as any, bob.privateKey, bob.overlay, aliceContact)
+    const messages = await mailbox.readMessages(bee as any, bob.privateKey, bob.ethAddress, aliceContact)
 
     expect(messages).toHaveLength(3)
     expect(messages[0].subject).toBe('Message 1')
@@ -318,7 +307,6 @@ describe('full messaging flow: Alice ↔ Bob', () => {
       nickname: 'Bob',
       walletPublicKey: bob.publicKeyHex,
       beePublicKey: bob.beePublicKey,
-      overlay: bob.overlay,
       addedAt: Date.now(),
     }
     const aliceContact = {
@@ -326,29 +314,28 @@ describe('full messaging flow: Alice ↔ Bob', () => {
       nickname: 'Alice',
       walletPublicKey: alice.publicKeyHex,
       beePublicKey: alice.beePublicKey,
-      overlay: alice.overlay,
       addedAt: Date.now(),
     }
 
     // Alice → Bob
-    await mailbox.send(bee as any, alice.ethAddress, STAMP, alice.privateKey, alice.overlay, bobContact, {
+    await mailbox.send(bee as any, alice.ethAddress, STAMP, alice.privateKey, alice.ethAddress, bobContact, {
       subject: 'Hi Bob',
       body: 'Hello from Alice',
     })
 
     // Bob → Alice
-    await mailbox.send(bee as any, bob.ethAddress, STAMP, bob.privateKey, bob.overlay, aliceContact, {
+    await mailbox.send(bee as any, bob.ethAddress, STAMP, bob.privateKey, bob.ethAddress, aliceContact, {
       subject: 'Hi Alice',
       body: 'Hello from Bob',
     })
 
     // Alice checks inbox — should see Bob's message
-    const aliceInbox = await mailbox.checkInbox(bee as any, alice.privateKey, alice.overlay, [bobContact])
+    const aliceInbox = await mailbox.checkInbox(bee as any, alice.privateKey, alice.ethAddress, [bobContact])
     expect(aliceInbox).toHaveLength(1)
     expect(aliceInbox[0].messages[0].subject).toBe('Hi Alice')
 
     // Bob checks inbox — should see Alice's message
-    const bobInbox = await mailbox.checkInbox(bee as any, bob.privateKey, bob.overlay, [aliceContact])
+    const bobInbox = await mailbox.checkInbox(bee as any, bob.privateKey, bob.ethAddress, [aliceContact])
     expect(bobInbox).toHaveLength(1)
     expect(bobInbox[0].messages[0].subject).toBe('Hi Bob')
   })
@@ -363,8 +350,6 @@ describe('registry notification flow', () => {
     // Bob sends notification to Alice (first contact)
     const payload: NotificationPayload = {
       sender: bob.ethAddress,
-      overlay: bob.overlay,
-      feedTopic: mailbox.feedTopic(bob.overlay, alice.overlay),
     }
 
     await registry.sendNotification(
@@ -385,8 +370,6 @@ describe('registry notification flow', () => {
 
     expect(notifications).toHaveLength(1)
     expect(notifications[0].payload.sender).toBe(bob.ethAddress)
-    expect(notifications[0].payload.overlay).toBe(bob.overlay)
-    expect(notifications[0].payload.feedTopic).toBe(payload.feedTopic)
     expect(notifications[0].blockNumber).toBe(1)
   })
 
@@ -398,8 +381,6 @@ describe('registry notification flow', () => {
     // Bob sends a valid notification
     const validPayload: NotificationPayload = {
       sender: bob.ethAddress,
-      overlay: bob.overlay,
-      feedTopic: 'valid-topic',
     }
     await registry.sendNotification(provider, CONTRACT, alice.publicKey, alice.ethAddress, validPayload)
 
@@ -407,8 +388,6 @@ describe('registry notification flow', () => {
     const spammer = makeUser()
     const spamPayload: NotificationPayload = {
       sender: spammer.ethAddress,
-      overlay: spammer.overlay,
-      feedTopic: 'spam-topic',
     }
     // Encrypt with spammer's own key instead of Alice's — Alice can't decrypt this
     const spamBytes = new TextEncoder().encode(JSON.stringify(spamPayload))
@@ -435,21 +414,21 @@ describe('registry notification flow', () => {
     const provider = createMockProvider()
 
     // Three different senders notify Alice
+    const senders: ReturnType<typeof makeUser>[] = []
     for (let i = 0; i < 3; i++) {
       const sender = makeUser()
+      senders.push(sender)
       const payload: NotificationPayload = {
         sender: sender.ethAddress,
-        overlay: sender.overlay,
-        feedTopic: `topic-${i}`,
       }
       await registry.sendNotification(provider, CONTRACT, alice.publicKey, alice.ethAddress, payload)
     }
 
     const notifications = await registry.pollNotifications(provider, CONTRACT, alice.ethAddress, alice.privateKey)
     expect(notifications).toHaveLength(3)
-    expect(notifications[0].payload.feedTopic).toBe('topic-0')
-    expect(notifications[1].payload.feedTopic).toBe('topic-1')
-    expect(notifications[2].payload.feedTopic).toBe('topic-2')
+    expect(notifications[0].payload.sender).toBe(senders[0].ethAddress)
+    expect(notifications[1].payload.sender).toBe(senders[1].ethAddress)
+    expect(notifications[2].payload.sender).toBe(senders[2].ethAddress)
   })
 
   it('fromBlock filters old notifications', async () => {
@@ -457,21 +436,23 @@ describe('registry notification flow', () => {
     const provider = createMockProvider()
 
     // Send two notifications (block 1 and block 2)
+    const senders: ReturnType<typeof makeUser>[] = []
     for (let i = 0; i < 2; i++) {
       const sender = makeUser()
+      senders.push(sender)
       await registry.sendNotification(
         provider,
         CONTRACT,
         alice.publicKey,
         alice.ethAddress,
-        { sender: sender.ethAddress, overlay: sender.overlay, feedTopic: `topic-${i}` },
+        { sender: sender.ethAddress },
       )
     }
 
     // Poll from block 2 — should only get the second one
     const notifications = await registry.pollNotifications(provider, CONTRACT, alice.ethAddress, alice.privateKey, 2)
     expect(notifications).toHaveLength(1)
-    expect(notifications[0].payload.feedTopic).toBe('topic-1')
+    expect(notifications[0].payload.sender).toBe(senders[1].ethAddress)
   })
 })
 
@@ -486,13 +467,11 @@ describe('end-to-end: discovery → messaging', () => {
     await identity.publish(bee as any, alice.ethAddress, STAMP, {
       walletPublicKey: alice.publicKeyHex,
       beePublicKey: alice.beePublicKey,
-      overlay: alice.overlay,
       ethAddress: alice.ethAddress,
     })
     await identity.publish(bee as any, bob.ethAddress, STAMP, {
       walletPublicKey: bob.publicKeyHex,
       beePublicKey: bob.beePublicKey,
-      overlay: bob.overlay,
       ethAddress: bob.ethAddress,
     })
 
@@ -503,23 +482,21 @@ describe('end-to-end: discovery → messaging', () => {
       nickname: 'Bob',
       walletPublicKey: bobId!.walletPublicKey,
       beePublicKey: bobId!.beePublicKey,
-      overlay: bobId!.overlay,
       addedAt: Date.now(),
     }
 
-    await mailbox.send(bee as any, alice.ethAddress, STAMP, alice.privateKey, alice.overlay, bobContact, {
+    await mailbox.send(bee as any, alice.ethAddress, STAMP, alice.privateKey, alice.ethAddress, bobContact, {
       subject: 'Project files',
       body: 'Attached the latest version',
     })
 
     // 3. Alice sends on-chain notification to Bob (first contact)
-    const feedTopic = mailbox.feedTopic(alice.overlay, bob.overlay)
     await registry.sendNotification(
       provider,
       CONTRACT,
       bob.publicKey,
       bob.ethAddress,
-      { sender: alice.ethAddress, overlay: alice.overlay, feedTopic },
+      { sender: alice.ethAddress },
     )
 
     // 4. Bob polls registry — discovers Alice
@@ -539,10 +516,9 @@ describe('end-to-end: discovery → messaging', () => {
       nickname: 'Alice',
       walletPublicKey: aliceId!.walletPublicKey,
       beePublicKey: aliceId!.beePublicKey,
-      overlay: aliceId!.overlay,
       addedAt: Date.now(),
     }
-    const messages = await mailbox.readMessages(bee as any, bob.privateKey, bob.overlay, aliceContact)
+    const messages = await mailbox.readMessages(bee as any, bob.privateKey, bob.ethAddress, aliceContact)
 
     expect(messages).toHaveLength(1)
     expect(messages[0].subject).toBe('Project files')
