@@ -96,23 +96,11 @@ const identityCmd = program.command('identity').description('Publish and resolve
 
 identityCmd
   .command('publish')
-  .description('Publish your identity (public keys + overlay) to a Swarm feed. One-time setup — others can then discover you by ETH address.')
-  .option('--overlay <hex>', 'Override overlay address (default: fetched from Bee node)')
-  .action(async (opts) => {
+  .description('Publish your identity (public keys) to a Swarm feed. One-time setup — others can then discover you by ETH address.')
+  .action(async () => {
     const privKey = getPrivateKey()
     const stamp = requireStamp()
     const bee = new Bee(BEE_URL)
-
-    let overlay = opts.overlay
-    if (!overlay) {
-      try {
-        const addresses = await bee.getNodeAddresses()
-        overlay = String(addresses.overlay)
-      } catch (e) {
-        console.error('Could not fetch overlay from Bee node. Pass --overlay or check BEE_URL.')
-        process.exit(1)
-      }
-    }
 
     const ethAddress = getEthAddress(privKey)
     const pubKeyHex = getPublicKeyHex(privKey)
@@ -121,18 +109,16 @@ identityCmd
     await identity.publish(bee, getPrivateKeyHex(privKey), stamp, {
       walletPublicKey: pubKeyHex,
       beePublicKey: pubKeyHex, // Using wallet key as bee key for CLI simplicity
-      overlay,
       ethAddress,
     })
 
     console.log(`Identity published for ${ethAddress}`)
     console.log(`  walletPublicKey: ${pubKeyHex}`)
-    console.log(`  overlay: ${overlay}`)
   })
 
 identityCmd
   .command('resolve')
-  .description('Look up someone\'s identity (public keys + overlay) from their Swarm feed')
+  .description('Look up someone\'s identity (public keys) from their Swarm feed')
   .argument('<ethAddress>', 'ETH address to look up')
   .action(async (ethAddress: string) => {
     const bee = new Bee(BEE_URL)
@@ -153,28 +139,26 @@ const contactsCmd = program.command('contacts').description('Manage local addres
 
 contactsCmd
   .command('add')
-  .description('Add a contact — resolves their identity from Swarm, or pass keys manually with --wallet-pub and --overlay')
+  .description('Add a contact — resolves their identity from Swarm, or pass keys manually with --wallet-pub')
   .argument('<ethAddress>', 'ETH address')
   .argument('<nickname>', 'Display name')
   .option('--wallet-pub <hex>', 'Manually provide wallet public key (skip identity resolve)')
   .option('--bee-pub <hex>', 'Manually provide bee public key')
-  .option('--overlay <hex>', 'Manually provide overlay address')
   .action(async (ethAddress: string, nickname: string, opts) => {
     let swarmId
 
-    if (opts.walletPub && opts.overlay) {
+    if (opts.walletPub) {
       // Manual mode — no Bee node needed
       swarmId = {
         walletPublicKey: opts.walletPub,
         beePublicKey: opts.beePub || opts.walletPub,
-        overlay: opts.overlay,
       }
     } else {
       // Resolve from Swarm
       const bee = new Bee(BEE_URL)
       const resolved = await identity.resolve(bee, ethAddress)
       if (!resolved) {
-        console.error(`No identity found for ${ethAddress}. Use --wallet-pub and --overlay to add manually.`)
+        console.error(`No identity found for ${ethAddress}. Use --wallet-pub to add manually.`)
         process.exit(1)
       }
       swarmId = resolved
@@ -207,7 +191,7 @@ contactsCmd
       return
     }
     for (const c of all) {
-      console.log(`  ${c.nickname} — ${c.ethAddress} (overlay: ${c.overlay.slice(0, 16)}...)`)
+      console.log(`  ${c.nickname} — ${c.ethAddress}`)
     }
   })
 
@@ -227,14 +211,6 @@ mailboxCmd
     const bee = new Bee(BEE_URL)
 
     const myAddress = getEthAddress(privKey)
-    let myOverlay: string
-    try {
-      const addresses = await bee.getNodeAddresses()
-      myOverlay = String(addresses.overlay)
-    } catch {
-      console.error('Could not fetch overlay from Bee node. Check BEE_URL.')
-      process.exit(1)
-    }
 
     const contact = loadContacts().list().find((c) => c.ethAddress.toLowerCase() === ethAddress.toLowerCase())
     if (!contact) {
@@ -242,7 +218,7 @@ mailboxCmd
       process.exit(1)
     }
 
-    await mailbox.send(bee, getPrivateKeyHex(privKey), stamp, privKey, myOverlay, contact, {
+    await mailbox.send(bee, getPrivateKeyHex(privKey), stamp, privKey, myAddress, contact, {
       subject: opts.subject,
       body: opts.body,
     })
@@ -258,14 +234,7 @@ mailboxCmd
     const privKey = getPrivateKey()
     const bee = new Bee(BEE_URL)
 
-    let myOverlay: string
-    try {
-      const addresses = await bee.getNodeAddresses()
-      myOverlay = String(addresses.overlay)
-    } catch {
-      console.error('Could not fetch overlay from Bee node. Check BEE_URL.')
-      process.exit(1)
-    }
+    const myAddress = getEthAddress(privKey)
 
     const contact = loadContacts().list().find((c) => c.ethAddress.toLowerCase() === ethAddress.toLowerCase())
     if (!contact) {
@@ -273,7 +242,7 @@ mailboxCmd
       process.exit(1)
     }
 
-    const messages = await mailbox.readMessages(bee, privKey, myOverlay, contact)
+    const messages = await mailbox.readMessages(bee, privKey, myAddress, contact)
 
     if (messages.length === 0) {
       console.log(`No messages from ${contact.nickname}.`)
@@ -294,14 +263,7 @@ mailboxCmd
     const privKey = getPrivateKey()
     const bee = new Bee(BEE_URL)
 
-    let myOverlay: string
-    try {
-      const addresses = await bee.getNodeAddresses()
-      myOverlay = String(addresses.overlay)
-    } catch {
-      console.error('Could not fetch overlay from Bee node. Check BEE_URL.')
-      process.exit(1)
-    }
+    const myAddress = getEthAddress(privKey)
 
     const allContacts = loadContacts().list()
     if (allContacts.length === 0) {
@@ -309,7 +271,7 @@ mailboxCmd
       return
     }
 
-    const inbox = await mailbox.checkInbox(bee, privKey, myOverlay, allContacts)
+    const inbox = await mailbox.checkInbox(bee, privKey, myAddress, allContacts)
 
     if (inbox.length === 0) {
       console.log('No new messages.')
@@ -338,16 +300,6 @@ registryCmd
     const privKey = getPrivateKey()
     const provider = createSigningProvider(GNOSIS_RPC_URL, '0x' + bytesToHex(privKey))
 
-    let myOverlay: string
-    try {
-      const bee = new Bee(BEE_URL)
-      const addresses = await bee.getNodeAddresses()
-      myOverlay = String(addresses.overlay)
-    } catch {
-      console.error('Could not fetch overlay from Bee node. Check BEE_URL.')
-      process.exit(1)
-    }
-
     const contact = loadContacts().list().find((c) => c.ethAddress.toLowerCase() === ethAddress.toLowerCase())
     if (!contact) {
       console.error(`Contact not found: ${ethAddress}. Add them first.`)
@@ -355,7 +307,6 @@ registryCmd
     }
 
     const myAddress = getEthAddress(privKey)
-    const feedTopic = mailbox.feedTopic(myOverlay, contact.overlay)
     const recipientPubKey = hexToBytes(contact.walletPublicKey)
 
     const txHash = await registry.sendNotification(
@@ -363,7 +314,7 @@ registryCmd
       CONTRACT_ADDRESS,
       recipientPubKey,
       contact.ethAddress,
-      { sender: myAddress, overlay: myOverlay, feedTopic },
+      { sender: myAddress },
     )
 
     console.log(`Notification sent to ${contact.nickname}`)
@@ -392,9 +343,7 @@ registryCmd
     console.log(`Found ${notifications.length} notification(s):`)
     for (const n of notifications) {
       console.log(`\n  Block ${n.blockNumber}:`)
-      console.log(`    sender:    ${n.payload.sender}`)
-      console.log(`    overlay:   ${n.payload.overlay}`)
-      console.log(`    feedTopic: ${n.payload.feedTopic}`)
+      console.log(`    sender: ${n.payload.sender}`)
     }
   })
 

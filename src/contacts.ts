@@ -40,7 +40,6 @@ export class ContactStore {
       nickname,
       walletPublicKey: identity.walletPublicKey,
       beePublicKey: identity.beePublicKey,
-      overlay: identity.overlay,
       addedAt: Date.now(),
     }
     this.contacts.push(contact)
@@ -69,7 +68,7 @@ export class ContactStore {
    */
   update(
     ethAddress: string,
-    changes: Partial<Pick<Contact, 'nickname' | 'overlay' | 'walletPublicKey' | 'beePublicKey'>>,
+    changes: Partial<Pick<Contact, 'nickname' | 'walletPublicKey' | 'beePublicKey'>>,
   ): Contact {
     const index = this.contacts.findIndex(
       (c) => c.ethAddress.toLowerCase() === ethAddress.toLowerCase(),

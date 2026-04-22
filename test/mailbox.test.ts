@@ -16,13 +16,12 @@ function makeKeypair() {
   }
 }
 
-function makeContact(overlay: string, keypair: ReturnType<typeof makeKeypair>): Contact {
+function makeContact(keypair: ReturnType<typeof makeKeypair>): Contact {
   return {
     ethAddress: keypair.address,
     nickname: 'Test',
     walletPublicKey: keypair.publicKeyHex,
     beePublicKey: '04' + 'cc'.repeat(32),
-    overlay,
     addedAt: Date.now(),
   }
 }
@@ -53,9 +52,7 @@ describe('send + readMessages', () => {
   it('round-trip: send a message, read it back', async () => {
     const alice = makeKeypair()
     const bob = makeKeypair()
-    const aliceOverlay = 'aa'.repeat(16)
-    const bobOverlay = 'bb'.repeat(16)
-    const bobContact = makeContact(bobOverlay, bob)
+    const bobContact = makeContact(bob)
 
     // Track what gets uploaded and written to feed
     let uploadedBlob: Uint8Array | null = null
@@ -85,7 +82,7 @@ describe('send + readMessages', () => {
       '0x' + bytesToHex(alice.privateKey),
       'stamp123',
       alice.privateKey,
-      aliceOverlay,
+      alice.address,
       bobContact,
       { subject: 'Hello', body: 'First message' },
     )
@@ -104,23 +101,21 @@ describe('send + readMessages', () => {
     })
     const beeRead = { makeFeedReader: makeFeedReaderForRead } as any
 
-    const aliceContact = makeContact(aliceOverlay, alice)
-    const messages = await readMessages(beeRead, bob.privateKey, bobOverlay, aliceContact)
+    const aliceContact = makeContact(alice)
+    const messages = await readMessages(beeRead, bob.privateKey, bob.address, aliceContact)
 
     expect(messages).toHaveLength(1)
     expect(messages[0].subject).toBe('Hello')
     expect(messages[0].body).toBe('First message')
     expect(messages[0].v).toBe(1)
-    expect(messages[0].sender).toBe(aliceOverlay)
+    expect(messages[0].sender).toBe(alice.address)
     expect(messages[0].ts).toBeGreaterThan(0)
   })
 
   it('send multiple messages: array grows', async () => {
     const alice = makeKeypair()
     const bob = makeKeypair()
-    const aliceOverlay = 'aa'.repeat(16)
-    const bobOverlay = 'bb'.repeat(16)
-    const bobContact = makeContact(bobOverlay, bob)
+    const bobContact = makeContact(bob)
 
     let uploadedBlob: Uint8Array | null = null
     const uploadData = vi.fn().mockImplementation((_stamp: string, data: Uint8Array) => {
@@ -140,7 +135,7 @@ describe('send + readMessages', () => {
     })
     const bee = { uploadData, makeFeedWriter, makeFeedReader } as any
 
-    await send(bee, '0x' + bytesToHex(alice.privateKey), 'stamp', alice.privateKey, aliceOverlay, bobContact, {
+    await send(bee, '0x' + bytesToHex(alice.privateKey), 'stamp', alice.privateKey, alice.address, bobContact, {
       subject: 'Msg 1',
       body: 'First',
     })
@@ -155,7 +150,7 @@ describe('send + readMessages', () => {
     })
     const bee2 = { uploadData, makeFeedWriter, makeFeedReader: makeFeedReader2 } as any
 
-    await send(bee2, '0x' + bytesToHex(alice.privateKey), 'stamp', alice.privateKey, aliceOverlay, bobContact, {
+    await send(bee2, '0x' + bytesToHex(alice.privateKey), 'stamp', alice.privateKey, alice.address, bobContact, {
       subject: 'Msg 2',
       body: 'Second',
     })
@@ -167,8 +162,8 @@ describe('send + readMessages', () => {
       }),
     })
     const beeRead = { makeFeedReader: makeFeedReaderRead } as any
-    const aliceContact = makeContact(aliceOverlay, alice)
-    const messages = await readMessages(beeRead, bob.privateKey, bobOverlay, aliceContact)
+    const aliceContact = makeContact(alice)
+    const messages = await readMessages(beeRead, bob.privateKey, bob.address, aliceContact)
 
     expect(messages).toHaveLength(2)
     expect(messages[0].subject).toBe('Msg 1')
@@ -184,9 +179,9 @@ describe('readMessages edge cases', () => {
       downloadPayload: vi.fn().mockRejectedValue(new Error('Not found')),
     })
     const bee = { makeFeedReader } as any
-    const aliceContact = makeContact('aa'.repeat(16), alice)
+    const aliceContact = makeContact(alice)
 
-    const messages = await readMessages(bee, bob.privateKey, 'bb'.repeat(16), aliceContact)
+    const messages = await readMessages(bee, bob.privateKey, bob.address, aliceContact)
     expect(messages).toEqual([])
   })
 })
@@ -196,9 +191,6 @@ describe('checkInbox', () => {
     const me = makeKeypair()
     const alice = makeKeypair()
     const bob = makeKeypair()
-    const myOverlay = 'cc'.repeat(16)
-    const aliceOverlay = 'aa'.repeat(16)
-    const bobOverlay = 'bb'.repeat(16)
 
     // Simulate: alice sent me a message, bob's feed is empty
     // We need to create encrypted blobs for alice's messages
@@ -206,7 +198,7 @@ describe('checkInbox', () => {
     const alicePubBytes = hexToBytes(alice.publicKeyHex)
     const sharedWithAlice = deriveSharedSecret(me.privateKey, alicePubBytes)
 
-    const aliceMessages = [{ v: 1, subject: 'Hi', body: 'From Alice', ts: 1000, sender: aliceOverlay }]
+    const aliceMessages = [{ v: 1, subject: 'Hi', body: 'From Alice', ts: 1000, sender: alice.address }]
     const plaintext = new TextEncoder().encode(JSON.stringify(aliceMessages))
     const encrypted = await encrypt(plaintext, sharedWithAlice)
     const blob = new Uint8Array(12 + encrypted.ciphertext.length)
@@ -231,10 +223,10 @@ describe('checkInbox', () => {
     })
     const bee = { makeFeedReader } as any
 
-    const aliceContact = makeContact(aliceOverlay, alice)
-    const bobContact = makeContact(bobOverlay, bob)
+    const aliceContact = makeContact(alice)
+    const bobContact = makeContact(bob)
 
-    const inbox = await checkInbox(bee, me.privateKey, myOverlay, [aliceContact, bobContact])
+    const inbox = await checkInbox(bee, me.privateKey, me.address, [aliceContact, bobContact])
 
     // Only Alice should appear (Bob has no messages)
     expect(inbox).toHaveLength(1)

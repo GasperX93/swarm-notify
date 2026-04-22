@@ -33,7 +33,6 @@ export async function publish(
     JSON.stringify({
       walletPublicKey: identity.walletPublicKey,
       beePublicKey: identity.beePublicKey,
-      overlay: identity.overlay,
     }),
   )
 
@@ -62,14 +61,13 @@ export async function resolve(
     const data = JSON.parse(text)
 
     // Validate required fields
-    if (!data.walletPublicKey || !data.beePublicKey || !data.overlay) {
+    if (!data.walletPublicKey || !data.beePublicKey) {
       return null
     }
 
     return {
       walletPublicKey: data.walletPublicKey,
       beePublicKey: data.beePublicKey,
-      overlay: data.overlay,
       ethAddress: ethAddress.toLowerCase(),
     }
   } catch {
