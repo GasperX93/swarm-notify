@@ -732,6 +732,65 @@ footer {
   color: var(--accent);
 }
 
+/* ─── Conclusion ─────────────────────────────── */
+
+.conclusion-box {
+  background: var(--surface);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.conclusion-box strong { color: var(--accent); }
+.conclusion-box a { color: var(--accent); text-decoration: none; }
+.conclusion-box a:hover { text-decoration: underline; }
+
+/* ─── Troubleshooting ────────────────────────── */
+
+.troubleshooting {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.troubleshooting h3 {
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.troubleshooting dl {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.troubleshooting dt {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.troubleshooting dd {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.troubleshooting dd:last-child { border-bottom: none; }
+
+.troubleshooting code {
+  background: var(--card);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--accent);
+}
+
 /* ─── Responsive ─────────────────────────────── */
 
 @media (max-width: 900px) {
