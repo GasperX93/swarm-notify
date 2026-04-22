@@ -181,6 +181,46 @@
       </div>
     </div>
 
+    <h2>What's Published Where — Privacy Model</h2>
+    <p class="section-subtitle">Swarm Notify uses encryption for privacy, not access control. Here's exactly what each network sees.</p>
+
+    <div class="privacy-table-wrap">
+      <table class="privacy-table">
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Network</th>
+            <th>Encryption</th>
+            <th>Who can read</th>
+            <th>What observers see</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Identity</strong><br/><code>{ walletPublicKey, beePublicKey, overlay }</code></td>
+            <td><span class="net-tag swarm">Swarm</span></td>
+            <td>None — plaintext</td>
+            <td>Anyone who knows your ETH address</td>
+            <td>Your public keys and overlay. Public by design — same model as PGP public keys.</td>
+          </tr>
+          <tr>
+            <td><strong>Messages</strong><br/><code>[nonce (12B) | AES-256-GCM ciphertext]</code></td>
+            <td><span class="net-tag swarm">Swarm</span></td>
+            <td>ECDH + AES-256-GCM</td>
+            <td>Only sender + recipient</td>
+            <td>That a feed exists between two overlays, and the encrypted blob size. Content is unreadable.</td>
+          </tr>
+          <tr>
+            <td><strong>Notifications</strong><br/><code>Notification(keccak256(addr), eciesBlob)</code></td>
+            <td><span class="net-tag chain">Gnosis</span></td>
+            <td>ECIES (asymmetric)</td>
+            <td>Only the recipient</td>
+            <td>That someone sent a notification to a hashed address. Sender identity is encrypted inside the payload.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <h2 class="demo-title">Interactive Demo</h2>
     <p class="section-subtitle">Try the flow below. Steps are numbered to match the "Sharing with a stranger" use case. For "Known contacts", skip step 6.</p>
   </section>
@@ -213,8 +253,12 @@
           <strong>Why:</strong> So anyone who knows Alice's ETH address can look up her encryption keys on Swarm.
           This is the foundation — without published keys, nobody can encrypt messages to you.
           <br/><br/>
-          <strong>Privacy:</strong> The identity feed is plaintext — <strong>public by design</strong>.
-          This is intentional: your public key must be public for others to encrypt data for you.
+          <strong>Data published (plaintext):</strong>
+          <code>{ walletPublicKey: "02ab...", beePublicKey: "04cd...", overlay: "ff12..." }</code>
+          <br/>Written to Swarm feed at topic <code>keccak256("swarm-identity-" + ethAddress)</code>.
+          <br/><br/>
+          <strong>Privacy:</strong> <strong>Public by design</strong> — anyone who knows your ETH address can read this.
+          Your public key must be public for others to encrypt data for you (same as PGP).
           The actual messages are encrypted separately (step 4).
         </div>
       </div>
@@ -267,9 +311,13 @@
           GCM also authenticates the ciphertext (tamper detection).
           3. <strong>Upload</strong> — Encrypted blob uploaded to Swarm, then Alice's feed pointer is updated.
           <br/><br/>
-          <strong>Key insight:</strong> The encryption key is never transmitted. Both parties derive it independently
-          from their own private key + the other's public key. An eavesdropper who sees both public keys
-          still cannot compute the shared secret without a private key.
+          <strong>Data published (encrypted):</strong>
+          <code>[nonce (12 bytes) | AES-256-GCM ciphertext]</code>
+          <br/>Written to Swarm feed at topic <code>keccak256(aliceOverlay + bobOverlay + "swarm-notify")</code>.
+          <br/><br/>
+          <strong>Privacy:</strong> Only Alice and Bob can decrypt the content. An observer can see that a feed
+          exists between two overlays and the blob size, but <strong>cannot read the messages</strong>.
+          The encryption key is never transmitted — both parties derive it independently.
         </div>
       </div>
 
@@ -293,9 +341,17 @@
           But if Alice is a stranger, Bob has no way to know she sent him a message. The on-chain
           notification solves this: it's a "hey, check your mailbox from me" signal.
           <br/><br/>
-          <strong>How:</strong> <strong>ECIES-encrypts</strong> <code>{sender, overlay, feedTopic}</code>
-          with Bob's public key and emits a <code>Notification</code> event on Gnosis Chain.
-          Only Bob can decrypt it. Cost: ~22,000 gas (~0.00002 xDAI). Querying is free.
+          <strong>Data published (on-chain, encrypted):</strong>
+          <code>Notification(keccak256(bobAddress), eciesEncryptedBlob)</code>
+          <br/>The encrypted blob contains: <code>{ sender: "0xAlice...", overlay: "ff12...", feedTopic: "a3b2..." }</code>
+          <br/><br/>
+          <strong>Privacy:</strong> Only Bob can decrypt the payload (ECIES with his private key).
+          An observer on Gnosis Chain can see that <em>someone</em> sent a notification to
+          <code>keccak256(bobAddress)</code>, but <strong>cannot see who sent it</strong> — the sender's
+          identity is inside the encrypted payload. The recipient's raw ETH address is also hidden
+          behind the keccak256 hash (though it's derivable if you already know the address).
+          <br/><br/>
+          <strong>Cost:</strong> ~22,000 gas (~0.00002 xDAI). Querying is free.
           <br/><br/>
           <strong>Wallet:</strong> Requires xDAI on Gnosis Chain. Paste a funded private key in
           the "Funded Key" config field above. In production, apps use the Bee node's wallet

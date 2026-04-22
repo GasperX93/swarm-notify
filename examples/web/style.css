@@ -349,6 +349,56 @@ h1 .subtitle {
   }
 }
 
+/* ─── Privacy Table ──────────────────────────── */
+
+.privacy-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 0.5rem;
+}
+
+.privacy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.privacy-table th {
+  background: var(--card);
+  color: var(--text);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+}
+
+.privacy-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+  vertical-align: top;
+}
+
+.privacy-table td strong {
+  color: var(--text);
+}
+
+.privacy-table td code {
+  background: var(--card);
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 0.63rem;
+  color: var(--accent);
+  display: block;
+  margin-top: 0.2rem;
+}
+
+.privacy-table tr:last-child td {
+  border-bottom: none;
+}
+
 .overview-box {
   background: var(--surface);
   border: 1px solid var(--accent-dim);

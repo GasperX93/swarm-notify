@@ -4,7 +4,12 @@ import type { EncryptedData } from './types'
 
 /** Convert Uint8Array to ArrayBuffer for Web Crypto API (TS 5.8 compatibility) */
 function toBuffer(arr: Uint8Array): ArrayBuffer {
-  return arr.buffer instanceof SharedArrayBuffer
+  // `SharedArrayBuffer` is undefined in browsers without cross-origin isolation
+  // (Brave by default, and any non-COOP/COEP page). Guard with `typeof` so the
+  // `instanceof` check doesn't throw ReferenceError when the global is missing.
+  const isShared =
+    typeof SharedArrayBuffer !== 'undefined' && arr.buffer instanceof SharedArrayBuffer
+  return isShared
     ? arr.slice().buffer
     : (arr.buffer as ArrayBuffer).slice(arr.byteOffset, arr.byteOffset + arr.byteLength)
 }
