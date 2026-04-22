@@ -6,8 +6,6 @@ export interface SwarmIdentity {
   walletPublicKey: string
   /** Bee node public key — used for ACT grantee lists */
   beePublicKey: string
-  /** Bee overlay address — used for mailbox feed topic computation */
-  overlay: string
   /** Publisher's ETH address (optional, derivable from feed owner) */
   ethAddress?: string
 }
@@ -24,7 +22,7 @@ export interface Message {
   body: string
   /** Unix timestamp in milliseconds */
   ts: number
-  /** Sender's overlay address */
+  /** Sender's ETH address */
   sender: string
   /** Message type — default: 'message' */
   type?: 'message' | 'drive-share'
@@ -62,8 +60,6 @@ export interface Contact {
   walletPublicKey: string
   /** Cached from identity feed — Bee node public key for ACT */
   beePublicKey: string
-  /** Cached from identity feed — Bee overlay address for feed topics */
-  overlay: string
   /** ENS name if known */
   ensName?: string
   /** When this contact was added (unix timestamp ms) */
@@ -72,14 +68,14 @@ export interface Contact {
 
 // ─── Notifications ───────────────────────────────────────────────
 
-/** Payload sent via the on-chain notification registry (ECIES-encrypted). */
+/**
+ * Payload sent via the on-chain notification registry (ECIES-encrypted).
+ * Contains only the sender's ETH address — the recipient derives the
+ * mailbox feed topic from feedTopic(senderEthAddr, recipientEthAddr).
+ */
 export interface NotificationPayload {
   /** Sender's ETH address */
   sender: string
-  /** Sender's Bee overlay address */
-  overlay: string
-  /** Mailbox feed topic to read messages from */
-  feedTopic: string
 }
 
 // ─── Crypto ──────────────────────────────────────────────────────
