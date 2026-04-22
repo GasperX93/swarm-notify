@@ -197,18 +197,18 @@
         </thead>
         <tbody>
           <tr>
-            <td><strong>Identity</strong><br/><code>{ walletPublicKey, beePublicKey, overlay }</code></td>
+            <td><strong>Identity</strong><br/><code>{ walletPublicKey, beePublicKey }</code></td>
             <td><span class="net-tag swarm">Swarm</span></td>
             <td>None — plaintext</td>
             <td>Anyone who knows your ETH address</td>
-            <td>Your public keys and overlay. Public by design — same model as PGP public keys.</td>
+            <td>Your public keys. Public by design — same model as PGP public keys.</td>
           </tr>
           <tr>
             <td><strong>Messages</strong><br/><code>[nonce (12B) | AES-256-GCM ciphertext]</code></td>
             <td><span class="net-tag swarm">Swarm</span></td>
             <td>ECDH + AES-256-GCM</td>
             <td>Only sender + recipient</td>
-            <td>That a feed exists between two overlays, and the encrypted blob size. Content is unreadable.</td>
+            <td>That a feed exists and the encrypted blob size. Content is unreadable.</td>
           </tr>
           <tr>
             <td><strong>Notifications</strong><br/><code>Notification(keccak256(addr), eciesBlob)</code></td>
@@ -246,7 +246,7 @@
           <div id="alice-publish-result" class="result"></div>
         </div>
         <div class="card-info">
-          <strong>What:</strong> Writes Alice's public keys (for encryption) and overlay address (for feed routing)
+          <strong>What:</strong> Writes Alice's public keys (for encryption)
           to a Swarm feed. The feed is at a deterministic topic:
           <code>keccak256("swarm-identity-" + ethAddress)</code>.
           <br/><br/>
@@ -254,7 +254,7 @@
           This is the foundation — without published keys, nobody can encrypt messages to you.
           <br/><br/>
           <strong>Data published (plaintext):</strong>
-          <code>{ walletPublicKey: "02ab...", beePublicKey: "04cd...", overlay: "ff12..." }</code>
+          <code>{ walletPublicKey: "02ab...", beePublicKey: "04cd..." }</code>
           <br/>Written to Swarm feed at topic <code>keccak256("swarm-identity-" + ethAddress)</code>.
           <br/><br/>
           <strong>Privacy:</strong> <strong>Public by design</strong> — anyone who knows your ETH address can read this.
@@ -276,7 +276,7 @@
         </div>
         <div class="card-info">
           <strong>What:</strong> Alice reads Bob's identity feed from Swarm using his ETH address.
-          She now has Bob's public key and overlay address — everything needed to send him encrypted messages.
+          She now has Bob's public key — everything needed to send him encrypted messages.
           <br/><br/>
           <strong>How does Alice know Bob's address?</strong> The same way you know someone's email:
           it was shared out-of-band — in a chat, on a website, via QR code, or in a contact directory.
@@ -313,10 +313,10 @@
           <br/><br/>
           <strong>Data published (encrypted):</strong>
           <code>[nonce (12 bytes) | AES-256-GCM ciphertext]</code>
-          <br/>Written to Swarm feed at topic <code>keccak256(aliceOverlay + bobOverlay + "swarm-notify")</code>.
+          <br/>Written to Swarm feed at topic <code>keccak256(aliceEthAddress + bobEthAddress + "swarm-notify")</code>.
           <br/><br/>
           <strong>Privacy:</strong> Only Alice and Bob can decrypt the content. An observer can see that a feed
-          exists between two overlays and the blob size, but <strong>cannot read the messages</strong>.
+          exists and the blob size, but <strong>cannot read the messages</strong>.
           The encryption key is never transmitted — both parties derive it independently.
         </div>
       </div>
@@ -343,7 +343,7 @@
           <br/><br/>
           <strong>Data published (on-chain, encrypted):</strong>
           <code>Notification(keccak256(bobAddress), eciesEncryptedBlob)</code>
-          <br/>The encrypted blob contains: <code>{ sender: "0xAlice...", overlay: "ff12...", feedTopic: "a3b2..." }</code>
+          <br/>The encrypted blob contains: <code>{ sender: "0xAlice..." }</code>
           <br/><br/>
           <strong>Privacy:</strong> Only Bob can decrypt the payload (ECIES with his private key).
           An observer on Gnosis Chain can see that <em>someone</em> sent a notification to
@@ -474,8 +474,8 @@
           <br/><br/>
           <strong>How:</strong> Calls <code>eth_getLogs</code> with topic filter
           <code>keccak256(bobAddress)</code>. For each log, tries to <strong>ECIES-decrypt</strong>
-          the payload with Bob's private key. Successful decryption reveals the sender's address,
-          overlay, and feed topic. Failed decryption = spam or not for Bob, silently discarded.
+          the payload with Bob's private key. Successful decryption reveals the sender's ETH address.
+          The recipient derives the feed topic from both ETH addresses. Failed decryption = spam or not for Bob, silently discarded.
           <br/><br/>
           <strong>When is this needed?</strong> Only to discover <em>strangers</em> who contacted you.
           If Bob already knows Alice (from step 3), he can read her feed directly without polling.
