@@ -525,3 +525,98 @@ describe('end-to-end: discovery → messaging', () => {
     expect(messages[0].body).toBe('Attached the latest version')
   })
 })
+
+// ─── Multi-device stability tests (regression guards) ───────────
+
+describe('multi-device stability: ETH address based feed topics', () => {
+  it('same ethAddress pair always produces the same feed topic', () => {
+    const alice = makeUser()
+    const bob = makeUser()
+
+    // Simulates the same wallet on two different devices — same ETH address
+    const topic1 = mailbox.feedTopic(alice.ethAddress, bob.ethAddress)
+    const topic2 = mailbox.feedTopic(alice.ethAddress, bob.ethAddress)
+
+    expect(topic1).toBe(topic2)
+  })
+
+  it('feed topic is independent of any per-device value', () => {
+    // Two "devices" for Alice — different private keys but same ETH address
+    const aliceEth = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const bobEth = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+    // The topic depends ONLY on ethAddress, not on any device-specific value
+    const topic = mailbox.feedTopic(aliceEth, bobEth)
+    expect(topic).toMatch(/^[0-9a-f]{64}$/)
+
+    // Calling again with the exact same addresses = same topic (trivial but guards regressions)
+    expect(mailbox.feedTopic(aliceEth, bobEth)).toBe(topic)
+  })
+
+  it('recipient can derive feedTopic from just the sender ethAddress', () => {
+    const alice = makeUser()
+    const bob = makeUser()
+
+    // Alice sends notification with just { sender: alice.ethAddress }
+    const payload: NotificationPayload = { sender: alice.ethAddress }
+
+    // Bob receives the notification and derives the feed topic
+    const derivedTopic = mailbox.feedTopic(payload.sender, bob.ethAddress)
+
+    // This should match the topic Alice used to write her messages
+    const aliceTopic = mailbox.feedTopic(alice.ethAddress, bob.ethAddress)
+    expect(derivedTopic).toBe(aliceTopic)
+  })
+
+  it('identity publish/resolve roundtrip without overlay', async () => {
+    const bee = new MockBee()
+    const alice = makeUser()
+
+    const published = {
+      walletPublicKey: alice.publicKeyHex,
+      beePublicKey: alice.beePublicKey,
+      ethAddress: alice.ethAddress,
+    }
+
+    await identity.publish(bee as any, alice.ethAddress, 'stamp', published)
+    const resolved = await identity.resolve(bee as any, alice.ethAddress)
+
+    expect(resolved).not.toBeNull()
+    expect(resolved!.walletPublicKey).toBe(published.walletPublicKey)
+    expect(resolved!.beePublicKey).toBe(published.beePublicKey)
+    expect(resolved).not.toHaveProperty('overlay')
+  })
+
+  it('Message.sender contains ethAddress, not overlay', async () => {
+    const bee = new MockBee()
+    const alice = makeUser()
+    const bob = makeUser()
+
+    const bobContact = {
+      ethAddress: bob.ethAddress.toLowerCase(),
+      nickname: 'Bob',
+      walletPublicKey: bob.publicKeyHex,
+      beePublicKey: bob.beePublicKey,
+      addedAt: Date.now(),
+    }
+
+    await mailbox.send(bee as any, alice.ethAddress, 'stamp', alice.privateKey, alice.ethAddress, bobContact, {
+      subject: 'Test',
+      body: 'Sender check',
+    })
+
+    const aliceContact = {
+      ethAddress: alice.ethAddress.toLowerCase(),
+      nickname: 'Alice',
+      walletPublicKey: alice.publicKeyHex,
+      beePublicKey: alice.beePublicKey,
+      addedAt: Date.now(),
+    }
+    const messages = await mailbox.readMessages(bee as any, bob.privateKey, bob.ethAddress, aliceContact)
+
+    expect(messages).toHaveLength(1)
+    // sender should be an ETH address, not an overlay
+    expect(messages[0].sender).toBe(alice.ethAddress)
+    expect(messages[0].sender).toMatch(/^0x[0-9a-f]{40}$/)
+  })
+})
