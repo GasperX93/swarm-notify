@@ -146,15 +146,29 @@ export async function send(
  * Decrypt a single message stored at one feed index.
  * Returns null when the index is absent OR doesn't hold a single Message object
  * (e.g. a legacy single-slot blob, which was an array — clean-break: ignored).
+ *
+ * IMPORTANT: each feed update stores a *reference* to the encrypted blob (the
+ * send path uses `uploadReference`), not the blob inline. bee-js's
+ * `downloadPayload({ index })` returns the raw single-owner-chunk payload — i.e.
+ * the reference bytes — WITHOUT resolving it (only the no-index "latest" read
+ * goes through the `/feeds` endpoint that resolves server-side). So we must
+ * follow the reference ourselves: read the reference at this index, then
+ * download the blob it points to.
  */
 async function readMessageAt(
+  bee: Bee,
   reader: ReturnType<Bee['makeFeedReader']>,
   index: number,
   sharedSecret: Uint8Array,
 ): Promise<Message | null> {
   try {
-    const result = await reader.downloadPayload({ index })
-    const encryptedBytes = result.payload.toUint8Array()
+    const { reference } = await reader.downloadReference({ index })
+    const downloaded = await bee.downloadData(reference)
+    // Real Bee returns a `Bytes` (toUint8Array); the test mock returns `{ data }`.
+    const encryptedBytes =
+      typeof (downloaded as { toUint8Array?: () => Uint8Array }).toUint8Array === 'function'
+        ? (downloaded as { toUint8Array: () => Uint8Array }).toUint8Array()
+        : (downloaded as unknown as { data: Uint8Array }).data
 
     const nonce = encryptedBytes.slice(0, 12)
     const ciphertext = encryptedBytes.slice(12)
@@ -205,7 +219,7 @@ export async function readMessages(
   const messages: Message[] = []
 
   for (let index = fromIndex; ; index++) {
-    const msg = await readMessageAt(reader, index, sharedSecret)
+    const msg = await readMessageAt(bee, reader, index, sharedSecret)
     if (!msg) break
     messages.push(msg)
   }

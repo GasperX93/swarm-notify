@@ -16,6 +16,14 @@ function feedIndex(n: number): { toBigInt: () => bigint } {
   return { toBigInt: () => BigInt(n) }
 }
 
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.startsWith('0x') ? hex.slice(2) : hex
+  const bytes = new Uint8Array(clean.length / 2)
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16)
+
+  return bytes
+}
+
 export class MockBee {
   /** Blob storage: reference → data */
   private blobs = new Map<string, Uint8Array>()
@@ -33,11 +41,12 @@ export class MockBee {
     return { reference: { toHex: () => ref } }
   }
 
-  /** Download a previously uploaded blob by reference. */
-  async downloadData(reference: string): Promise<{ data: Uint8Array }> {
+  /** Download a previously uploaded blob by reference. Returns a `Bytes`-like
+   * (real bee-js returns a `Bytes` with `toUint8Array()`). */
+  async downloadData(reference: string): Promise<{ toUint8Array: () => Uint8Array }> {
     const data = this.blobs.get(reference)
     if (!data) throw new Error(`Blob not found: ${reference}`)
-    return { data: new Uint8Array(data) }
+    return { toUint8Array: () => new Uint8Array(data) }
   }
 
   /**
@@ -92,13 +101,32 @@ export class MockBee {
     const ownerHex = address.replace('0x', '').toLowerCase()
     const key = `${topic}:${ownerHex}`
 
+    // Resolve a mailbox feed index → its stored reference (or throw if absent).
+    const resolveRef = (requested?: number) => {
+      const latest = this.feedLatestIndex.get(key)
+      const index = requested ?? latest
+      if (index === undefined) throw new Error(`Feed not found: ${key}`)
+      const ref = this.feedReferences.get(`${key}:${index}`)
+      if (!ref) throw new Error(`Feed not found at index ${index}: ${key}`)
+      const isLatest = latest !== undefined && index === latest
+
+      return { ref, index, feedIndexNext: isLatest ? feedIndex(latest + 1) : undefined }
+    }
+
+    const toIndex = (opts?: { index?: number | { toBigInt: () => bigint } }) =>
+      opts?.index === undefined
+        ? undefined
+        : typeof opts.index === 'number'
+          ? opts.index
+          : Number(opts.index.toBigInt())
+
     return {
+      // Faithful to real bee-js: the no-index ("latest") read goes through the
+      // /feeds endpoint and RESOLVES the reference to the content; an explicit
+      // index read returns the raw single-owner-chunk payload (the reference
+      // bytes), NOT the content. So mailbox reads must use downloadReference.
       downloadPayload: async (opts?: { index?: number | { toBigInt: () => bigint } }) => {
-        const requested = opts?.index === undefined
-          ? undefined
-          : typeof opts.index === 'number'
-            ? opts.index
-            : Number(opts.index.toBigInt())
+        const requested = toIndex(opts)
 
         // Identity feeds: direct single-slot payload (only on a no-index/latest read).
         if (requested === undefined) {
@@ -109,27 +137,26 @@ export class MockBee {
               feedIndex: feedIndex(0),
             }
           }
+          // Mailbox: no-index resolves the latest reference to its content.
+          const { ref, index, feedIndexNext } = resolveRef(undefined)
+          const data = this.blobs.get(ref)
+          if (!data) throw new Error(`Blob not found: ${ref}`)
+
+          return { payload: { toUint8Array: () => new Uint8Array(data) }, feedIndex: feedIndex(index), feedIndexNext }
         }
 
-        // Mailbox reference feeds (append-only, per index).
-        const latest = this.feedLatestIndex.get(key)
-        const index = requested ?? latest
-        if (index === undefined) throw new Error(`Feed not found: ${key}`)
+        // Explicit index: return the RAW reference bytes (does NOT resolve) —
+        // mirrors real bee-js so callers can't accidentally rely on resolution.
+        const { ref, index, feedIndexNext } = resolveRef(requested)
 
-        const ref = this.feedReferences.get(`${key}:${index}`)
-        if (!ref) throw new Error(`Feed not found at index ${index}: ${key}`)
+        return { payload: { toUint8Array: () => hexToBytes(ref) }, feedIndex: feedIndex(index), feedIndexNext }
+      },
 
-        const data = this.blobs.get(ref)
-        if (!data) throw new Error(`Blob not found: ${ref}`)
+      // Returns the reference stored at an index; the caller downloads it.
+      downloadReference: async (opts?: { index?: number | { toBigInt: () => bigint } }) => {
+        const { ref, index, feedIndexNext } = resolveRef(toIndex(opts))
 
-        // feedIndexNext is only meaningful on a latest read (mimics bee-js).
-        const isLatest = latest !== undefined && index === latest
-
-        return {
-          payload: { toUint8Array: () => new Uint8Array(data) },
-          feedIndex: feedIndex(index),
-          feedIndexNext: isLatest ? feedIndex(latest + 1) : undefined,
-        }
+        return { reference: ref, feedIndex: feedIndex(index), feedIndexNext }
       },
     }
   }
