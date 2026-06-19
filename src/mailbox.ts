@@ -4,7 +4,13 @@ import { deriveSharedSecret, encrypt, decrypt } from './crypto'
 import type { Bee } from '@ethersphere/bee-js'
 import type { Contact, Message } from './types'
 
-const FEED_SUFFIX = 'swarm-notify'
+// Bumped to v2 with the append-only format. The v1 ('swarm-notify') feeds held
+// the whole conversation as one mutable slot; v2 writes one message per index.
+// Versioning the topic abandons v1 feeds entirely so the new format always
+// starts on a virgin feed at index 0 — a clean break with no migration and no
+// chance of a v1 array blob colliding with a v2 index. Both parties upgrade
+// together (the single-object payload is unreadable by the v1 reader anyway).
+const FEED_SUFFIX = 'swarm-notify/v2'
 
 /**
  * Append-only mailbox.
