@@ -132,7 +132,14 @@ export async function send(
   blob.set(encrypted.ciphertext, 12)
 
   // Upload the blob, then point THIS feed index at it.
-  const uploadResult = await bee.uploadData(stamp, blob)
+  //
+  // deferred: false — push the payload to the network BEFORE returning. The
+  // feed slot below is a SOC write, which Bee always pushes directly; without
+  // this, the payload would sit in the sender's local store awaiting the
+  // background pusher, and quitting the app right after sending strands it —
+  // the recipient's inbox walk then stalls at this index forever (readers
+  // stop at the first gap), hiding every later message too.
+  const uploadResult = await bee.uploadData(stamp, blob, { deferred: false })
   await writer.uploadReference(stamp, uploadResult.reference, { index })
 
   // Advance the session cache so a follow-up send this session is race-free
