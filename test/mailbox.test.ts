@@ -148,26 +148,61 @@ describe('send + readMessages (append-only)', () => {
 })
 
 describe('warmup / gap handling', () => {
-  it('stops at a not-yet-propagated gap, then picks it up once filled', async () => {
+  it('skips a slot-gap and still delivers later messages; a late-filled gap appears next poll', async () => {
     const bee = new MockBee()
     const alice = makeKeypair()
     const bob = makeKeypair()
     const bobContact = makeContact(bob)
     const aliceContact = makeContact(alice)
 
-    // Write indices 0, 1, 3 — index 2 hasn't propagated yet (explicit indices).
+    // Write indices 0, 1, 3 — index 2 missing (per-origin cursor jump or lag).
     await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm0' }, 0)
     await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm1' }, 1)
     await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm3' }, 3)
 
-    // Reader stops at the gap (index 2) — strict ordering, no out-of-order delivery.
+    // Reader hops the gap — one missing slot must not hide later messages.
     const before = await readMessages(bee as any, bob.privateKey, bob.address, aliceContact)
-    expect(before.map(m => m.body)).toEqual(['m0', 'm1'])
+    expect(before.map(m => m.body)).toEqual(['m0', 'm1', 'm3'])
 
-    // Gap fills in; reader now sees everything in order.
+    // Gap fills in later; next poll sees everything in index order.
     await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm2' }, 2)
     const after = await readMessages(bee as any, bob.privateKey, bob.address, aliceContact)
     expect(after.map(m => m.body)).toEqual(['m0', 'm1', 'm2', 'm3'])
+  })
+
+  it('delivers a real-world sparse feed (slots 0,1,5,8) completely', async () => {
+    const bee = new MockBee()
+    const alice = makeKeypair()
+    const bob = makeKeypair()
+    const bobContact = makeContact(bob)
+    const aliceContact = makeContact(alice)
+
+    // Pattern observed in production: multi-origin send cursors left gaps.
+    for (const [i, body] of [[0, 'a'], [1, 'b'], [5, 'c'], [8, 'd']] as [number, string][]) {
+      await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body }, i)
+    }
+
+    const msgs = await readMessages(bee as any, bob.privateKey, bob.address, aliceContact)
+    expect(msgs.map(m => m.body)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('a payload hole (slot exists, content unreachable) is skipped, not treated as the end', async () => {
+    const bee = new MockBee()
+    const alice = makeKeypair()
+    const bob = makeKeypair()
+    const bobContact = makeContact(bob)
+    const aliceContact = makeContact(alice)
+
+    await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'first' }, 0)
+    // Index 1: slot points at a reference whose payload is NOT retrievable
+    // (a stranded pre-direct-upload payload).
+    const topic = feedTopic(alice.address, bob.address)
+    const bogusRef = 'deadbeef'.repeat(8)
+    await bee.makeFeedWriter(topic, alice.address).uploadReference(STAMP, bogusRef, { index: 1 })
+    await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'after-hole' }, 2)
+
+    const msgs = await readMessages(bee as any, bob.privateKey, bob.address, aliceContact)
+    expect(msgs.map(m => m.body)).toEqual(['first', 'after-hole'])
   })
 })
 
