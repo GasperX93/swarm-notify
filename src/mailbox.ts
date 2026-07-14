@@ -150,9 +150,20 @@ export async function send(
 }
 
 /**
+ * Result of reading one feed index. The distinction matters:
+ * - `end`：the feed SLOT itself is absent — the sender never wrote this index,
+ *   so it's the true end of the mailbox (senders write contiguously).
+ * - `skip`: the slot EXISTS but its payload can't be delivered (unreachable on
+ *   the network — e.g. stranded pre-0.5.2 deferred uploads — or undecryptable,
+ *   or a legacy-format blob). The message was sent; its content is a hole.
+ *   Readers must NOT treat this as the end, or one permanent hole hides every
+ *   later message forever.
+ * - `message`: a decrypted Message.
+ */
+type ReadResult = { kind: 'message'; message: Message } | { kind: 'skip' } | { kind: 'end' }
+
+/**
  * Decrypt a single message stored at one feed index.
- * Returns null when the index is absent OR doesn't hold a single Message object
- * (e.g. a legacy single-slot blob, which was an array — clean-break: ignored).
  *
  * IMPORTANT: each feed update stores a *reference* to the encrypted blob (the
  * send path uses `uploadReference`), not the blob inline. bee-js's
@@ -167,9 +178,19 @@ async function readMessageAt(
   reader: ReturnType<Bee['makeFeedReader']>,
   index: number,
   sharedSecret: Uint8Array,
-): Promise<Message | null> {
+): Promise<ReadResult> {
+  let reference: Awaited<ReturnType<ReturnType<Bee['makeFeedReader']>['downloadReference']>>['reference']
+
   try {
-    const { reference } = await reader.downloadReference({ index })
+    ;({ reference } = await reader.downloadReference({ index }))
+  } catch {
+    // No slot at this index — the sender never wrote it. True end of the
+    // mailbox (or a just-written slot that hasn't propagated: the next poll
+    // picks it up, preserving order).
+    return { kind: 'end' }
+  }
+
+  try {
     const downloaded = await bee.downloadData(reference)
     // Real Bee returns a `Bytes` (toUint8Array); the test mock returns `{ data }`.
     const encryptedBytes =
@@ -184,26 +205,43 @@ async function readMessageAt(
     const parsed = JSON.parse(new TextDecoder().decode(decryptedBytes)) as unknown
 
     // New format = one Message object per index. A legacy array (old single-slot
-    // format) is intentionally ignored → yields [] for that thread (clean break).
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    // format) is intentionally skipped (clean break) without ending the walk.
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { kind: 'skip' }
 
-    return parsed as Message
+    return { kind: 'message', message: parsed as Message }
   } catch {
-    // Index not yet retrievable, missing, or decrypt failure.
-    return null
+    // The slot exists but its payload is unreachable or undecryptable — a hole
+    // (e.g. payload stranded on the sender's node by pre-0.5.2 deferred
+    // uploads). Skip it; do NOT end the walk, or this hole permanently hides
+    // every later message.
+    return { kind: 'skip' }
   }
 }
 
 /**
+ * How many consecutive missing SLOTS the reader probes past a gap before
+ * declaring the true end of the mailbox. Slot-gaps are real in production:
+ * per-origin send cursors (multiple browsers/ports on the host side) can leave
+ * indices that were never written. Observed real-world gaps are 1–3 wide; 8 is
+ * a comfortable margin. Messages beyond a gap wider than this are not seen —
+ * senders' cursor jumps land near the tail, so wider gaps shouldn't occur.
+ */
+export const END_LOOKAHEAD = 8
+
+/**
  * Read messages from a contact's mailbox feed (the contact→me feed) starting at
- * `fromIndex`, in index order.
+ * `fromIndex`, in ascending index order.
  *
- * Stops at the FIRST gap (an index that can't be read). Because the sender
- * writes indices contiguously and pins each chunk, a gap is a transient
- * not-yet-propagated chunk, not a permanent hole — so stopping preserves strict
- * ordering and the missing messages are picked up on a later poll, once the
- * lagging chunk propagates. (Skipping a gap would deliver later messages out of
- * order, which is worse for a chat.)
+ * Tolerant of imperfect feeds — neither of these ends the walk:
+ * - **Slot-gaps** (index never written, e.g. sender's per-origin cursor jumped):
+ *   probes up to END_LOOKAHEAD indices ahead (in parallel) before declaring the
+ *   end. Without this, one permanent gap hides every later message forever.
+ * - **Payload holes** (slot exists, content unreachable/undecryptable/legacy):
+ *   skipped. A transiently-unavailable payload is delivered by a later poll
+ *   once it propagates (hosts re-merge by timestamp).
+ *
+ * Delivered messages are always in ascending index order; a skipped-then-
+ * recovered message appears on a subsequent poll.
  *
  * @param fromIndex - First index to read (host passes its read cursor here for
  *                    O(1) incremental reads). Defaults to 0 = full history.
@@ -225,10 +263,31 @@ export async function readMessages(
 
   const messages: Message[] = []
 
-  for (let index = fromIndex; ; index++) {
-    const msg = await readMessageAt(bee, reader, index, sharedSecret)
-    if (!msg) break
-    messages.push(msg)
+  for (let index = fromIndex; ; ) {
+    const result = await readMessageAt(bee, reader, index, sharedSecret)
+
+    if (result.kind === 'message') {
+      messages.push(result.message)
+      index++
+      continue
+    }
+    if (result.kind === 'skip') {
+      index++
+      continue
+    }
+
+    // Missing slot — probe the next END_LOOKAHEAD indices in parallel. If any
+    // exists, this was a slot-gap: resume just past the first hit; everything
+    // between is confirmed missing. If none exist, this is the true end.
+    const probes = await Promise.all(
+      Array.from({ length: END_LOOKAHEAD }, (_, k) => readMessageAt(bee, reader, index + 1 + k, sharedSecret)),
+    )
+    const hit = probes.findIndex((p) => p.kind !== 'end')
+    if (hit === -1) break
+
+    const found = probes[hit]
+    if (found.kind === 'message') messages.push(found.message)
+    index = index + 1 + hit + 1
   }
 
   return messages
