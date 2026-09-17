@@ -53,7 +53,7 @@ describe('publish', () => {
       feedTopic(identity.ethAddress),
       '0x' + 'aa'.repeat(32),
     )
-    expect(uploadPayload).toHaveBeenCalledWith('stamp123', expect.any(Uint8Array))
+    expect(uploadPayload).toHaveBeenCalledWith('stamp123', expect.any(Uint8Array), { deferred: false })
 
     // Verify the payload is valid JSON with the right fields
     const payload = uploadPayload.mock.calls[0][1]
