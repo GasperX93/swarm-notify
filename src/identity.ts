@@ -37,7 +37,12 @@ export async function publish(
   )
 
   const writer = bee.makeFeedWriter(topic, signer)
-  await writer.uploadPayload(stamp, payload)
+  // deferred: false — push the identity to the network BEFORE returning.
+  // On a light node a deferred upload stays local: the publisher's own node
+  // resolves the feed (self-readback lies), while every other node gets
+  // "Not Found" and lookups by address fail. Same bug class as the 0.5.2
+  // "sent means sent" fix for message payloads — this was the missed path.
+  await writer.uploadPayload(stamp, payload, { deferred: false })
 }
 
 /**
