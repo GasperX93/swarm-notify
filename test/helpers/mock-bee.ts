@@ -64,9 +64,21 @@ export class MockBee {
     return {
       owner: { toHex: () => ownerHex },
 
-      /** Upload raw payload to the feed (used by identity.publish — single slot). */
-      uploadPayload: async (_stamp: string, payload: Uint8Array) => {
-        this.feedPayloads.set(key, new Uint8Array(payload))
+      /** Upload raw payload to the feed (used by identity.publish — single slot,
+       *  pinned to an explicit index since the 2026-09-17 walk-free fix). */
+      uploadPayload: async (
+        _stamp: string,
+        payload: Uint8Array,
+        opts?: { index?: number | { toBigInt: () => bigint }; deferred?: boolean },
+      ) => {
+        const index = opts?.index === undefined
+          ? undefined
+          : typeof opts.index === 'number'
+            ? opts.index
+            : Number(opts.index.toBigInt())
+
+        if (index === undefined) this.feedPayloads.set(key, new Uint8Array(payload))
+        else this.feedPayloads.set(`${key}:${index}`, new Uint8Array(payload))
         return { reference: 'feed-' + key }
       },
 
@@ -127,6 +139,18 @@ export class MockBee {
       // bytes), NOT the content. So mailbox reads must use downloadReference.
       downloadPayload: async (opts?: { index?: number | { toBigInt: () => bigint } }) => {
         const requested = toIndex(opts)
+
+        // Explicit-index read returns the raw SOC payload at that slot — for
+        // identity's pinned slot that IS the identity JSON.
+        if (requested !== undefined) {
+          const slotPayload = this.feedPayloads.get(`${key}:${requested}`)
+          if (slotPayload) {
+            return {
+              payload: { toUint8Array: () => new Uint8Array(slotPayload) },
+              feedIndex: feedIndex(requested),
+            }
+          }
+        }
 
         // Identity feeds: direct single-slot payload (only on a no-index/latest read).
         if (requested === undefined) {

@@ -42,7 +42,15 @@ export async function publish(
   // resolves the feed (self-readback lies), while every other node gets
   // "Not Found" and lookups by address fail. Same bug class as the 0.5.2
   // "sent means sent" fix for message payloads — this was the missed path.
-  await writer.uploadPayload(stamp, payload, { deferred: false })
+  //
+  // index: 0 — identity is a SINGLE SLOT, not a sequence. A sequence feed
+  // must be WALKED from index 0 by resolvers; if any historic index is
+  // missing from the network (e.g. stranded by the deferred bug, or its
+  // batch expired), the walk dies there and the identity is unresolvable
+  // even though the latest update propagated fine (proven live 2026-09-17:
+  // the newest SOC was ON the gateway while the feed lookup 404'd). Pinning
+  // one slot removes the walk and the history dependency entirely.
+  await writer.uploadPayload(stamp, payload, { deferred: false, index: 0 })
 }
 
 /**
@@ -61,7 +69,8 @@ export async function resolve(
   // So we use fetchLatestFeedUpdate with the ETH address as owner.
   try {
     const reader = bee.makeFeedReader(topic, ethAddress)
-    const result = await reader.downloadPayload()
+    // Single-slot read (see publish): one direct SOC fetch, no feed walk.
+    const result = await reader.downloadPayload({ index: 0 })
     const text = new TextDecoder().decode(result.payload.toUint8Array())
     const data = JSON.parse(text)
 
