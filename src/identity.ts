@@ -15,7 +15,39 @@ export function feedTopic(ethAddress: string): string {
 }
 
 /**
- * Publish identity to a Swarm feed. One-time operation (or when keys change).
+ * Identity slots are forward-probed, never walked as a bee-js sequence feed.
+ *
+ * Why not a single pinned slot (the 2026-09-17 fix): SOC chunks are immutable
+ * — the network keeps the FIRST payload ever written to an address. A pinned
+ * index 0 therefore freezes the identity at its first publish; a reinstall
+ * (new bee node key) can never update it, and the publisher's own node lies
+ * about it on readback (its localstore serves the new chunk while every other
+ * node serves the original — proven live 2026-09-21).
+ *
+ * Why not bee-js latest-index resolution (the pre-09-17 design): its walk
+ * dies on any missing historic index, making the identity unresolvable even
+ * when the newest update propagated fine.
+ *
+ * Forward-probe threads the needle: each update writes the next free index,
+ * resolvers walk up from 0 and keep the LAST slot found. Updates are rare
+ * (key changes on reinstall) and always direct-pushed, so holes are unlikely
+ * — and a hole degrades to a stale-but-resolvable identity, never to
+ * unresolvable. Old resolvers that only read index 0 keep working (stale).
+ */
+const MAX_IDENTITY_SLOTS = 32
+
+function encodeIdentityPayload(identity: SwarmIdentity): Uint8Array {
+  return new TextEncoder().encode(
+    JSON.stringify({
+      walletPublicKey: identity.walletPublicKey,
+      beePublicKey: identity.beePublicKey,
+    }),
+  )
+}
+
+/**
+ * Publish identity to a Swarm feed. Idempotent: republishing an unchanged
+ * identity writes nothing; a changed identity lands in the next free slot.
  * @param signer - Private key hex string or Uint8Array for feed signing
  */
 export async function publish(
@@ -29,15 +61,37 @@ export async function publish(
     throw new Error('ethAddress is required to publish an identity feed')
   }
 
-  const payload = new TextEncoder().encode(
-    JSON.stringify({
-      walletPublicKey: identity.walletPublicKey,
-      beePublicKey: identity.beePublicKey,
-    }),
-  )
+  const payload = encodeIdentityPayload(identity)
+  const payloadText = new TextDecoder().decode(payload)
 
   const writer = bee.makeFeedWriter(topic, signer)
-  await writer.uploadPayload(stamp, payload)
+  const reader = bee.makeFeedReader(topic, identity.ethAddress)
+
+  for (let index = 0; index < MAX_IDENTITY_SLOTS; index++) {
+    let existing: string | null = null
+    try {
+      const result = await reader.downloadPayload({ index })
+      existing = new TextDecoder().decode(result.payload.toUint8Array())
+    } catch {
+      // slot is free — publish here
+    }
+
+    if (existing === null) {
+      // deferred: false — push the identity to the network BEFORE returning.
+      // On a light node a deferred upload stays local: the publisher's own
+      // node resolves the feed (self-readback lies), while every other node
+      // gets "Not Found" and lookups by address fail.
+      await writer.uploadPayload(stamp, payload, { deferred: false, index })
+      return
+    }
+
+    if (existing === payloadText) {
+      // Identity already published and unchanged — don't burn a slot.
+      return
+    }
+  }
+
+  throw new Error(`Identity feed is full (${MAX_IDENTITY_SLOTS} slots) — cannot publish an update`)
 }
 
 /**
@@ -50,28 +104,38 @@ export async function resolve(
 ): Promise<SwarmIdentity | null> {
   const topic = feedTopic(ethAddress)
 
-  // We need the feed owner address to create a reader.
-  // For identity feeds, the owner IS the person whose identity we're looking up.
-  // But we don't know their Bee node address — we only have their ETH address.
-  // So we use fetchLatestFeedUpdate with the ETH address as owner.
-  try {
-    const reader = bee.makeFeedReader(topic, ethAddress)
-    const result = await reader.downloadPayload()
-    const text = new TextDecoder().decode(result.payload.toUint8Array())
-    const data = JSON.parse(text)
+  // The feed owner IS the person being looked up — their ETH address signs
+  // the feed, so it doubles as the reader's owner parameter.
+  const reader = bee.makeFeedReader(topic, ethAddress)
 
-    // Validate required fields
-    if (!data.walletPublicKey || !data.beePublicKey) {
-      return null
+  // Forward-probe (see publish): keep the LAST readable slot. A malformed
+  // slot doesn't end the walk — later slots may hold a valid update — but
+  // a missing slot does: publishes are sequential and direct-pushed, so the
+  // first hole marks the end of the written range.
+  let latest: SwarmIdentity | null = null
+
+  for (let index = 0; index < MAX_IDENTITY_SLOTS; index++) {
+    let text: string
+    try {
+      const result = await reader.downloadPayload({ index })
+      text = new TextDecoder().decode(result.payload.toUint8Array())
+    } catch {
+      break
     }
 
-    return {
-      walletPublicKey: data.walletPublicKey,
-      beePublicKey: data.beePublicKey,
-      ethAddress: ethAddress.toLowerCase(),
+    try {
+      const data = JSON.parse(text)
+      if (data.walletPublicKey && data.beePublicKey) {
+        latest = {
+          walletPublicKey: data.walletPublicKey,
+          beePublicKey: data.beePublicKey,
+          ethAddress: ethAddress.toLowerCase(),
+        }
+      }
+    } catch {
+      // malformed slot — skip, keep walking
     }
-  } catch {
-    // Feed not found or invalid data
-    return null
   }
+
+  return latest
 }
