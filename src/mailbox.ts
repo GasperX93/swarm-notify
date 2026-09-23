@@ -153,14 +153,16 @@ export async function send(
  * Result of reading one feed index. The distinction matters:
  * - `end`：the feed SLOT itself is absent — the sender never wrote this index,
  *   so it's the true end of the mailbox (senders write contiguously).
- * - `skip`: the slot EXISTS but its payload can't be delivered (unreachable on
- *   the network — e.g. stranded pre-0.5.2 deferred uploads — or undecryptable,
- *   or a legacy-format blob). The message was sent; its content is a hole.
- *   Readers must NOT treat this as the end, or one permanent hole hides every
- *   later message forever.
+ * - `hole`: the slot EXISTS but its payload can't be delivered (unreachable on
+ *   the network — a just-sent payload still propagating, or one stranded by
+ *   pre-0.5.2 deferred uploads — or undecryptable). The message was sent; its
+ *   content is missing, possibly only for now. Readers must NOT treat this as
+ *   the end, or one permanent hole hides every later message forever.
+ * - `skip`: the slot holds a legacy-format blob (old single-slot array) —
+ *   permanently not a message; never worth re-reading.
  * - `message`: a decrypted Message.
  */
-type ReadResult = { kind: 'message'; message: Message } | { kind: 'skip' } | { kind: 'end' }
+type ReadResult = { kind: 'message'; message: Message } | { kind: 'hole' } | { kind: 'skip' } | { kind: 'end' }
 
 /**
  * Decrypt a single message stored at one feed index.
@@ -211,10 +213,10 @@ async function readMessageAt(
     return { kind: 'message', message: parsed as Message }
   } catch {
     // The slot exists but its payload is unreachable or undecryptable — a hole
-    // (e.g. payload stranded on the sender's node by pre-0.5.2 deferred
-    // uploads). Skip it; do NOT end the walk, or this hole permanently hides
-    // every later message.
-    return { kind: 'skip' }
+    // (e.g. still propagating, or stranded on the sender's node by pre-0.5.2
+    // deferred uploads). Do NOT end the walk, or this hole permanently hides
+    // every later message; readMailbox reports it so hosts can retry it.
+    return { kind: 'hole' }
   }
 }
 
@@ -228,31 +230,50 @@ async function readMessageAt(
  */
 export const END_LOOKAHEAD = 8
 
+/** Result of an incremental mailbox read (see {@link readMailbox}). */
+export interface MailboxReadResult {
+  /** Newly delivered messages: recovered holes first, then the walk in index order */
+  messages: Message[]
+  /**
+   * Where the walk stopped: the first index with no slot and no slot within
+   * `lookahead` after it. Pass it back as `fromIndex` on the next poll.
+   */
+  nextIndex: number
+  /**
+   * Indices whose slot exists but whose payload couldn't be read (possibly
+   * only for now). Pass them back as `retryIndices`; drop one after the host's
+   * own retry budget so a permanent hole never costs more than that.
+   */
+  holes: number[]
+}
+
 /**
- * Read messages from a contact's mailbox feed (the contact→me feed) starting at
- * `fromIndex`, in ascending index order.
+ * Incremental read of a contact's mailbox feed (the contact→me feed), for
+ * hosts that poll: start at a persisted cursor instead of walking the whole
+ * history, and re-read only the payload holes still worth trying.
  *
  * Tolerant of imperfect feeds — neither of these ends the walk:
  * - **Slot-gaps** (index never written, e.g. sender's per-origin cursor jumped):
- *   probes up to END_LOOKAHEAD indices ahead (in parallel) before declaring the
+ *   probes up to `lookahead` indices ahead (in parallel) before declaring the
  *   end. Without this, one permanent gap hides every later message forever.
- * - **Payload holes** (slot exists, content unreachable/undecryptable/legacy):
- *   skipped. A transiently-unavailable payload is delivered by a later poll
- *   once it propagates (hosts re-merge by timestamp).
+ *   Each probe past the true end is a 404 on the node, so pollers can pass a
+ *   small `lookahead` on most polls and the full one periodically.
+ * - **Payload holes** (slot exists, content unreachable/undecryptable): walked
+ *   past and returned in `holes`.
  *
- * Delivered messages are always in ascending index order; a skipped-then-
- * recovered message appears on a subsequent poll.
- *
- * @param fromIndex - First index to read (host passes its read cursor here for
- *                    O(1) incremental reads). Defaults to 0 = full history.
+ * @param opts.fromIndex - first index to walk (the host's cursor); default 0
+ * @param opts.lookahead - slots probed past a missing one; default {@link END_LOOKAHEAD}, 0 = stop at the first missing slot
+ * @param opts.retryIndices - holes from earlier reads to try again first
  */
-export async function readMessages(
+export async function readMailbox(
   bee: Bee,
   myPrivateKey: Uint8Array,
   myEthAddress: string,
   contact: Contact,
-  fromIndex = 0,
-): Promise<Message[]> {
+  opts: { fromIndex?: number; lookahead?: number; retryIndices?: number[] } = {},
+): Promise<MailboxReadResult> {
+  const lookahead = Math.max(0, opts.lookahead ?? END_LOOKAHEAD)
+
   // Derive shared secret
   const contactPubKeyBytes = hexToBytes(contact.walletPublicKey)
   const sharedSecret = deriveSharedSecret(myPrivateKey, contactPubKeyBytes)
@@ -262,8 +283,22 @@ export async function readMessages(
   const reader = bee.makeFeedReader(topic, contact.ethAddress)
 
   const messages: Message[] = []
+  const holes: number[] = []
 
-  for (let index = fromIndex; ; ) {
+  // Earlier holes first. A retried index that is now a message is delivered;
+  // one still unreadable stays a hole; anything else (legacy blob, slot gone)
+  // is dropped for good.
+  const retried = await Promise.all(
+    (opts.retryIndices ?? []).map(async (i) => ({ i, r: await readMessageAt(bee, reader, i, sharedSecret) })),
+  )
+  for (const { i, r } of retried) {
+    if (r.kind === 'message') messages.push(r.message)
+    else if (r.kind === 'hole') holes.push(i)
+  }
+
+  let index = opts.fromIndex ?? 0
+
+  for (;;) {
     const result = await readMessageAt(bee, reader, index, sharedSecret)
 
     if (result.kind === 'message') {
@@ -271,35 +306,57 @@ export async function readMessages(
       index++
       continue
     }
-    if (result.kind === 'skip') {
+    if (result.kind === 'hole' || result.kind === 'skip') {
+      if (result.kind === 'hole') holes.push(index)
       index++
       continue
     }
+    if (lookahead === 0) break
 
-    // Missing slot — probe the next END_LOOKAHEAD indices in parallel. If any
+    // Missing slot — probe the next `lookahead` indices in parallel. If any
     // exists, this was a slot-gap: resume just past the first hit; everything
     // between is confirmed missing. If none exist, this is the true end.
     const probes = await Promise.all(
-      Array.from({ length: END_LOOKAHEAD }, (_, k) => readMessageAt(bee, reader, index + 1 + k, sharedSecret)),
+      Array.from({ length: lookahead }, (_, k) => readMessageAt(bee, reader, index + 1 + k, sharedSecret)),
     )
     const hit = probes.findIndex((p) => p.kind !== 'end')
     if (hit === -1) break
 
     const found = probes[hit]
     if (found.kind === 'message') messages.push(found.message)
+    else if (found.kind === 'hole') holes.push(index + 1 + hit)
     index = index + 1 + hit + 1
   }
 
-  return messages
+  return { messages, nextIndex: index, holes }
+}
+
+/**
+ * Read messages from a contact's mailbox feed (the contact→me feed) starting at
+ * `fromIndex`, in ascending index order — the stateless form of
+ * {@link readMailbox} (full lookahead, holes walked past and not reported). A
+ * transiently-unavailable payload is delivered by a later call from an index
+ * at or before it (hosts re-merge by timestamp).
+ *
+ * @param fromIndex - First index to read. Defaults to 0 = full history. Pollers
+ *                    should prefer readMailbox, which returns the resume cursor.
+ */
+export async function readMessages(
+  bee: Bee,
+  myPrivateKey: Uint8Array,
+  myEthAddress: string,
+  contact: Contact,
+  fromIndex = 0,
+): Promise<Message[]> {
+  return (await readMailbox(bee, myPrivateKey, myEthAddress, contact, { fromIndex })).messages
 }
 
 /**
  * Check inbox across all contacts. Returns messages per contact.
  *
- * v1 reads each contact from index 0 — incremental (per-contact cursor) reads
- * are a host-cursor concern; `checkInbox` holds no per-contact state, so the
- * host should call `readMessages(..., fromIndex)` directly when it wants O(1)
- * incremental polling.
+ * Reads each contact's full history from index 0 — `checkInbox` holds no
+ * per-contact state. Hosts that poll should call {@link readMailbox} per
+ * contact with a persisted cursor instead.
  */
 export async function checkInbox(
   bee: Bee,
