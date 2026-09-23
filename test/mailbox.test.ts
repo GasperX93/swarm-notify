@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import * as secp from '@noble/secp256k1'
 import { bytesToHex } from '@noble/hashes/utils'
-import { feedTopic, send, readMessages, checkInbox } from '../src/mailbox'
+import { feedTopic, send, readMessages, readMailbox, checkInbox } from '../src/mailbox'
 import { deriveSharedSecret, encrypt } from '../src/crypto'
 import { MockBee } from './helpers/mock-bee'
 import type { Contact } from '../src/types'
@@ -261,5 +261,82 @@ describe('checkInbox', () => {
     expect(inbox[0].contact.ethAddress).toBe(alice.address)
     expect(inbox[0].messages).toHaveLength(1)
     expect(inbox[0].messages[0].subject).toBe('Hi')
+  })
+})
+
+describe('readMailbox (incremental polling)', () => {
+  it('returns a cursor so the next poll reads only new messages', async () => {
+    const bee = new MockBee()
+    const alice = makeKeypair()
+    const bob = makeKeypair()
+    const bobContact = makeContact(bob)
+    const aliceContact = makeContact(alice)
+
+    for (let i = 0; i < 3; i++) {
+      await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: `m${i}` }, i)
+    }
+    const first = await readMailbox(bee as any, bob.privateKey, bob.address, aliceContact)
+    expect(first.messages.map(m => m.body)).toEqual(['m0', 'm1', 'm2'])
+    expect(first.nextIndex).toBe(3)
+    expect(first.holes).toEqual([])
+
+    await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm3' }, 3)
+    const next = await readMailbox(bee as any, bob.privateKey, bob.address, aliceContact, { fromIndex: first.nextIndex })
+    expect(next.messages.map(m => m.body)).toEqual(['m3'])
+    expect(next.nextIndex).toBe(4)
+  })
+
+  it('lookahead 0 stops at the first missing slot; the full lookahead hops the gap', async () => {
+    const bee = new MockBee()
+    const alice = makeKeypair()
+    const bob = makeKeypair()
+    const bobContact = makeContact(bob)
+    const aliceContact = makeContact(alice)
+
+    await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm0' }, 0)
+    await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm2' }, 2)
+
+    const cheap = await readMailbox(bee as any, bob.privateKey, bob.address, aliceContact, { lookahead: 0 })
+    expect(cheap.messages.map(m => m.body)).toEqual(['m0'])
+    expect(cheap.nextIndex).toBe(1)
+
+    const full = await readMailbox(bee as any, bob.privateKey, bob.address, aliceContact, { fromIndex: cheap.nextIndex })
+    expect(full.messages.map(m => m.body)).toEqual(['m2'])
+    expect(full.nextIndex).toBe(3)
+  })
+
+  it('reports payload holes and delivers them once retried after they recover', async () => {
+    const bee = new MockBee()
+    const alice = makeKeypair()
+    const bob = makeKeypair()
+    const bobContact = makeContact(bob)
+    const aliceContact = makeContact(alice)
+    const topic = feedTopic(alice.address, bob.address)
+
+    await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm0' }, 0)
+    await bee.makeFeedWriter(topic, alice.address).uploadReference(STAMP, 'deadbeef'.repeat(8), { index: 1 })
+    await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm2' }, 2)
+
+    const first = await readMailbox(bee as any, bob.privateKey, bob.address, aliceContact)
+    expect(first.messages.map(m => m.body)).toEqual(['m0', 'm2'])
+    expect(first.holes).toEqual([1])
+    expect(first.nextIndex).toBe(3)
+
+    // Still unreadable: stays a hole, cursor unchanged, nothing re-walked.
+    const again = await readMailbox(bee as any, bob.privateKey, bob.address, aliceContact, {
+      fromIndex: first.nextIndex,
+      retryIndices: first.holes,
+    })
+    expect(again.messages).toEqual([])
+    expect(again.holes).toEqual([1])
+
+    // The payload arrives (index 1 rewritten with a real message): delivered.
+    await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm1' }, 1)
+    const recovered = await readMailbox(bee as any, bob.privateKey, bob.address, aliceContact, {
+      fromIndex: first.nextIndex,
+      retryIndices: again.holes,
+    })
+    expect(recovered.messages.map(m => m.body)).toEqual(['m1'])
+    expect(recovered.holes).toEqual([])
   })
 })
