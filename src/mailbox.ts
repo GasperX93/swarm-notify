@@ -2,6 +2,7 @@ import { keccak_256 } from '@noble/hashes/sha3'
 import { bytesToHex } from '@noble/hashes/utils'
 import { deriveSharedSecret, encrypt, decrypt } from './crypto'
 import type { Bee } from '@ethersphere/bee-js'
+import { downloadData, makeFeedReader, makeFeedWriter, uploadData } from './bee-compat'
 import type { Contact, Message } from './types'
 
 // Bumped to v2 with the append-only format. The v1 ('swarm-notify') feeds held
@@ -66,7 +67,7 @@ async function resolveNextIndex(
 
   // Cold start — discover the tail from the latest feed update.
   try {
-    const reader = bee.makeFeedReader(topic, ownerAddress)
+    const reader = makeFeedReader(bee, topic, ownerAddress)
     const latest = await reader.downloadPayload()
     if (latest.feedIndexNext) return Number(latest.feedIndexNext.toBigInt())
 
@@ -109,7 +110,7 @@ export async function send(
   const topic = feedTopic(myEthAddress, recipient.ethAddress)
 
   // The writer's own ETH address — also the owner we read tail from on cold start.
-  const writer = bee.makeFeedWriter(topic, signer)
+  const writer = makeFeedWriter(bee, topic, signer)
   const ownerAddress = writer.owner.toHex()
 
   const index = await resolveNextIndex(bee, topic, ownerAddress, nextIndex)
@@ -139,7 +140,7 @@ export async function send(
   // background pusher, and quitting the app right after sending strands it —
   // the recipient's inbox walk then stalls at this index forever (readers
   // stop at the first gap), hiding every later message too.
-  const uploadResult = await bee.uploadData(stamp, blob, { deferred: false })
+  const uploadResult = await uploadData(bee, stamp, blob, { deferred: false })
   await writer.uploadReference(stamp, uploadResult.reference, { index })
 
   // Advance the session cache so a follow-up send this session is race-free
@@ -193,7 +194,7 @@ async function readMessageAt(
   }
 
   try {
-    const downloaded = await bee.downloadData(reference)
+    const downloaded = await downloadData(bee, reference)
     // Real Bee returns a `Bytes` (toUint8Array); the test mock returns `{ data }`.
     const encryptedBytes =
       typeof (downloaded as { toUint8Array?: () => Uint8Array }).toUint8Array === 'function'
@@ -280,7 +281,7 @@ export async function readMailbox(
 
   // Topic: contact→me (contact is the sender/owner)
   const topic = feedTopic(contact.ethAddress, myEthAddress)
-  const reader = bee.makeFeedReader(topic, contact.ethAddress)
+  const reader = makeFeedReader(bee, topic, contact.ethAddress)
 
   const messages: Message[] = []
   const holes: number[] = []

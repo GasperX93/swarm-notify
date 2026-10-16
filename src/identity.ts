@@ -1,6 +1,7 @@
 import { keccak_256 } from '@noble/hashes/sha3'
 import { bytesToHex } from '@noble/hashes/utils'
 import type { Bee } from '@ethersphere/bee-js'
+import { makeFeedReader, makeFeedWriter } from './bee-compat'
 import type { SwarmIdentity } from './types'
 
 const FEED_PREFIX = 'swarm-identity-'
@@ -64,8 +65,8 @@ export async function publish(
   const payload = encodeIdentityPayload(identity)
   const payloadText = new TextDecoder().decode(payload)
 
-  const writer = bee.makeFeedWriter(topic, signer)
-  const reader = bee.makeFeedReader(topic, identity.ethAddress)
+  const writer = makeFeedWriter(bee, topic, signer)
+  const reader = makeFeedReader(bee, topic, identity.ethAddress)
 
   for (let index = 0; index < MAX_IDENTITY_SLOTS; index++) {
     let existing: string | null = null
@@ -106,7 +107,7 @@ export async function resolve(
 
   // The feed owner IS the person being looked up — their ETH address signs
   // the feed, so it doubles as the reader's owner parameter.
-  const reader = bee.makeFeedReader(topic, ethAddress)
+  const reader = makeFeedReader(bee, topic, ethAddress)
 
   // Forward-probe (see publish): keep the LAST readable slot. A malformed
   // slot doesn't end the walk — later slots may hold a valid update — but
