@@ -11,6 +11,11 @@
 import { keccak_256 } from '@noble/hashes/sha3'
 import { bytesToHex } from '@noble/hashes/utils'
 
+/** A missing feed slot, as Bee reports it (HTTP 404). */
+function notFound(message: string): Error {
+  return Object.assign(new Error(message), { status: 404 })
+}
+
 /** Minimal stand-in for bee-js FeedIndex (only `toBigInt` is used by the SDK). */
 function feedIndex(n: number): { toBigInt: () => bigint } {
   return { toBigInt: () => BigInt(n) }
@@ -117,9 +122,9 @@ export class MockBee {
     const resolveRef = (requested?: number) => {
       const latest = this.feedLatestIndex.get(key)
       const index = requested ?? latest
-      if (index === undefined) throw new Error(`Feed not found: ${key}`)
+      if (index === undefined) throw notFound(`Feed not found: ${key}`)
       const ref = this.feedReferences.get(`${key}:${index}`)
-      if (!ref) throw new Error(`Feed not found at index ${index}: ${key}`)
+      if (!ref) throw notFound(`Feed not found at index ${index}: ${key}`)
       const isLatest = latest !== undefined && index === latest
 
       return { ref, index, feedIndexNext: isLatest ? feedIndex(latest + 1) : undefined }
