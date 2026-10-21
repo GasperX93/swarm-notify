@@ -163,7 +163,12 @@ export async function send(
  *   permanently not a message; never worth re-reading.
  * - `message`: a decrypted Message.
  */
-type ReadResult = { kind: 'message'; message: Message } | { kind: 'hole' } | { kind: 'skip' } | { kind: 'end' }
+type ReadResult =
+  | { kind: 'message'; message: Message }
+  | { kind: 'hole' }
+  | { kind: 'skip' }
+  | { kind: 'end' }
+  | { kind: 'unavailable' }
 
 /**
  * Decrypt a single message stored at one feed index.
@@ -186,11 +191,13 @@ async function readMessageAt(
 
   try {
     ;({ reference } = await reader.downloadReference({ index }))
-  } catch {
-    // No slot at this index — the sender never wrote it. True end of the
-    // mailbox (or a just-written slot that hasn't propagated: the next poll
-    // picks it up, preserving order).
-    return { kind: 'end' }
+  } catch (error) {
+    // Only a 404 means no slot at this index — the sender never wrote it (or a
+    // just-written slot hasn't propagated: the next poll picks it up, in
+    // order). Anything else (5xx, timeout, network) means the node couldn't
+    // fetch it right now: the walk stops there and reads it again next time,
+    // instead of mistaking it for the end or hopping over it.
+    return (error as { status?: number } | null)?.status === 404 ? { kind: 'end' } : { kind: 'unavailable' }
   }
 
   try {
@@ -235,6 +242,8 @@ export const END_LOOKAHEAD = 8
 export interface MailboxReadResult {
   /** Newly delivered messages: recovered holes first, then the walk in index order */
   messages: Message[]
+  /** The feed index of each of `messages` (same order) — lets hosts recognise a message they already have */
+  indexes: number[]
   /**
    * Where the walk stopped: the first index with no slot and no slot within
    * `lookahead` after it. Pass it back as `fromIndex` on the next poll.
@@ -246,6 +255,18 @@ export interface MailboxReadResult {
    * own retry budget so a permanent hole never costs more than that.
    */
   holes: number[]
+  /**
+   * Indices hopped over as slot-gaps (no slot found there, a later one
+   * exists). Usually never written; on a node that is still warming up a
+   * slot can also be not-found for a while — hosts may retry them like holes.
+   */
+  gaps: number[]
+  /**
+   * False when the walk stopped at a slot the node couldn't fetch (not a
+   * 404): `nextIndex` is that slot, and the read should be repeated before
+   * counting on everything up to the end having been seen.
+   */
+  complete: boolean
 }
 
 /**
@@ -265,13 +286,17 @@ export interface MailboxReadResult {
  * @param opts.fromIndex - first index to walk (the host's cursor); default 0
  * @param opts.lookahead - slots probed past a missing one; default {@link END_LOOKAHEAD}, 0 = stop at the first missing slot
  * @param opts.retryIndices - holes from earlier reads to try again first
+ * @param opts.direction - 'received' (default): the contact→me feed. 'sent':
+ *                    my own me→contact feed — same shared secret, so a host
+ *                    that lost its local copy can load what it sent. Its
+ *                    `nextIndex` is also the next index to write.
  */
 export async function readMailbox(
   bee: Bee,
   myPrivateKey: Uint8Array,
   myEthAddress: string,
   contact: Contact,
-  opts: { fromIndex?: number; lookahead?: number; retryIndices?: number[] } = {},
+  opts: { fromIndex?: number; lookahead?: number; retryIndices?: number[]; direction?: 'received' | 'sent' } = {},
 ): Promise<MailboxReadResult> {
   const lookahead = Math.max(0, opts.lookahead ?? END_LOOKAHEAD)
 
@@ -279,12 +304,21 @@ export async function readMailbox(
   const contactPubKeyBytes = hexToBytes(contact.walletPublicKey)
   const sharedSecret = deriveSharedSecret(myPrivateKey, contactPubKeyBytes)
 
-  // Topic: contact→me (contact is the sender/owner)
-  const topic = feedTopic(contact.ethAddress, myEthAddress)
-  const reader = makeFeedReader(bee, topic, contact.ethAddress)
+  // Received: contact→me (contact is the sender/owner). Sent: me→contact (I own it).
+  const sent = opts.direction === 'sent'
+  const owner = sent ? myEthAddress : contact.ethAddress
+  const topic = sent ? feedTopic(myEthAddress, contact.ethAddress) : feedTopic(contact.ethAddress, myEthAddress)
+  const reader = makeFeedReader(bee, topic, owner)
 
   const messages: Message[] = []
+  const indexes: number[] = []
   const holes: number[] = []
+  const gaps: number[] = []
+  let complete = true
+  const deliver = (i: number, message: Message) => {
+    messages.push(message)
+    indexes.push(i)
+  }
 
   // Earlier holes first. A retried index that is now a message is delivered;
   // one still unreadable stays a hole; anything else (legacy blob, slot gone)
@@ -293,8 +327,8 @@ export async function readMailbox(
     (opts.retryIndices ?? []).map(async (i) => ({ i, r: await readMessageAt(bee, reader, i, sharedSecret) })),
   )
   for (const { i, r } of retried) {
-    if (r.kind === 'message') messages.push(r.message)
-    else if (r.kind === 'hole') holes.push(i)
+    if (r.kind === 'message') deliver(i, r.message)
+    else if (r.kind === 'hole' || r.kind === 'unavailable') holes.push(i)
   }
 
   let index = opts.fromIndex ?? 0
@@ -303,7 +337,7 @@ export async function readMailbox(
     const result = await readMessageAt(bee, reader, index, sharedSecret)
 
     if (result.kind === 'message') {
-      messages.push(result.message)
+      deliver(index, result.message)
       index++
       continue
     }
@@ -312,11 +346,17 @@ export async function readMailbox(
       index++
       continue
     }
+    if (result.kind === 'unavailable') {
+      complete = false
+      break
+    }
     if (lookahead === 0) break
 
     // Missing slot — probe the next `lookahead` indices in parallel. If any
-    // exists, this was a slot-gap: resume just past the first hit; everything
-    // between is confirmed missing. If none exist, this is the true end.
+    // exists, this was a slot-gap: resume just past the first hit, reporting
+    // the hopped indices as gaps. If none exist, this is the true end. A probe
+    // the node couldn't fetch before the first hit leaves it undecided: stop
+    // here and probe again next time.
     const probes = await Promise.all(
       Array.from({ length: lookahead }, (_, k) => readMessageAt(bee, reader, index + 1 + k, sharedSecret)),
     )
@@ -324,12 +364,17 @@ export async function readMailbox(
     if (hit === -1) break
 
     const found = probes[hit]
-    if (found.kind === 'message') messages.push(found.message)
+    if (found.kind === 'unavailable') {
+      complete = false
+      break
+    }
+    for (let k = 0; k <= hit; k++) gaps.push(index + k)
+    if (found.kind === 'message') deliver(index + 1 + hit, found.message)
     else if (found.kind === 'hole') holes.push(index + 1 + hit)
     index = index + 1 + hit + 1
   }
 
-  return { messages, nextIndex: index, holes }
+  return { messages, indexes, nextIndex: index, holes, gaps, complete }
 }
 
 /**

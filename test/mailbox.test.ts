@@ -265,6 +265,28 @@ describe('checkInbox', () => {
 })
 
 describe('readMailbox (incremental polling)', () => {
+  it("direction 'sent' reads my own me→contact feed back", async () => {
+    const bee = new MockBee()
+    const alice = makeKeypair()
+    const bob = makeKeypair()
+    const bobContact = makeContact(bob)
+    const aliceContact = makeContact(alice)
+
+    for (let i = 0; i < 2; i++) {
+      await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: `a${i}` }, i)
+    }
+    await send(bee as any, bob.address, STAMP, bob.privateKey, bob.address, aliceContact, { subject: '', body: 'b0' }, 0)
+
+    const sent = await readMailbox(bee as any, alice.privateKey, alice.address, bobContact, { direction: 'sent' })
+    expect(sent.messages.map(m => m.body)).toEqual(['a0', 'a1'])
+    expect(sent.messages.every(m => m.sender === alice.address)).toBe(true)
+    expect(sent.nextIndex).toBe(2)
+
+    // The default still reads the other direction.
+    const received = await readMailbox(bee as any, alice.privateKey, alice.address, bobContact)
+    expect(received.messages.map(m => m.body)).toEqual(['b0'])
+  })
+
   it('returns a cursor so the next poll reads only new messages', async () => {
     const bee = new MockBee()
     const alice = makeKeypair()
@@ -284,6 +306,73 @@ describe('readMailbox (incremental polling)', () => {
     const next = await readMailbox(bee as any, bob.privateKey, bob.address, aliceContact, { fromIndex: first.nextIndex })
     expect(next.messages.map(m => m.body)).toEqual(['m3'])
     expect(next.nextIndex).toBe(4)
+  })
+
+  /** Make the node fail (HTTP 500) on these feed indices — slots that exist but can't be fetched right now. */
+  function failAt(bee: MockBee, indices: Set<number>) {
+    const real = bee.makeFeedReader.bind(bee)
+    ;(bee as any).makeFeedReader = (topic: string, address: string) => {
+      const reader = real(topic, address)
+      return {
+        ...reader,
+        downloadReference: async (o: { index: number }) => {
+          if (indices.has(Number(o.index))) throw Object.assign(new Error('Internal Server Error'), { status: 500 })
+          return reader.downloadReference(o as any)
+        },
+      }
+    }
+  }
+
+  it('a slot the node cannot fetch right now stops the read there, and it is read next time', async () => {
+    const bee = new MockBee()
+    const alice = makeKeypair()
+    const bob = makeKeypair()
+    const aliceContact = makeContact(alice)
+    const bobContact = makeContact(bob)
+
+    for (let i = 0; i < 3; i++) {
+      await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: `m${i}` }, i)
+    }
+    const failing = new Set([1])
+    failAt(bee, failing)
+
+    const first = await readMailbox(bee as any, bob.privateKey, bob.address, aliceContact)
+    expect(first.messages.map(m => m.body)).toEqual(['m0'])
+    expect(first.indexes).toEqual([0])
+    expect(first.nextIndex).toBe(1)
+    expect(first.complete).toBe(false)
+
+    failing.clear()
+    const next = await readMailbox(bee as any, bob.privateKey, bob.address, aliceContact, { fromIndex: first.nextIndex })
+    expect(next.messages.map(m => m.body)).toEqual(['m1', 'm2'])
+    expect(next.indexes).toEqual([1, 2])
+    expect(next.complete).toBe(true)
+  })
+
+  it('a probe the node cannot fetch is never hopped over as a gap', async () => {
+    const bee = new MockBee()
+    const alice = makeKeypair()
+    const bob = makeKeypair()
+    const aliceContact = makeContact(alice)
+    const bobContact = makeContact(bob)
+
+    // Slot 1 never written (a real gap), slot 2 exists but fails for now, slot 3 exists.
+    await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm0' }, 0)
+    await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm2' }, 2)
+    await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: 'm3' }, 3)
+    const failing = new Set([2])
+    failAt(bee, failing)
+
+    const first = await readMailbox(bee as any, bob.privateKey, bob.address, aliceContact)
+    expect(first.messages.map(m => m.body)).toEqual(['m0'])
+    expect(first.nextIndex).toBe(1)
+    expect(first.complete).toBe(false)
+
+    failing.clear()
+    const next = await readMailbox(bee as any, bob.privateKey, bob.address, aliceContact, { fromIndex: first.nextIndex })
+    expect(next.messages.map(m => m.body)).toEqual(['m2', 'm3'])
+    expect(next.gaps).toEqual([1])
+    expect(next.indexes).toEqual([2, 3])
   })
 
   it('lookahead 0 stops at the first missing slot; the full lookahead hops the gap', async () => {
