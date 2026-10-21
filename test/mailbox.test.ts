@@ -265,6 +265,28 @@ describe('checkInbox', () => {
 })
 
 describe('readMailbox (incremental polling)', () => {
+  it("direction 'sent' reads my own me→contact feed back", async () => {
+    const bee = new MockBee()
+    const alice = makeKeypair()
+    const bob = makeKeypair()
+    const bobContact = makeContact(bob)
+    const aliceContact = makeContact(alice)
+
+    for (let i = 0; i < 2; i++) {
+      await send(bee as any, alice.address, STAMP, alice.privateKey, alice.address, bobContact, { subject: '', body: `a${i}` }, i)
+    }
+    await send(bee as any, bob.address, STAMP, bob.privateKey, bob.address, aliceContact, { subject: '', body: 'b0' }, 0)
+
+    const sent = await readMailbox(bee as any, alice.privateKey, alice.address, bobContact, { direction: 'sent' })
+    expect(sent.messages.map(m => m.body)).toEqual(['a0', 'a1'])
+    expect(sent.messages.every(m => m.sender === alice.address)).toBe(true)
+    expect(sent.nextIndex).toBe(2)
+
+    // The default still reads the other direction.
+    const received = await readMailbox(bee as any, alice.privateKey, alice.address, bobContact)
+    expect(received.messages.map(m => m.body)).toEqual(['b0'])
+  })
+
   it('returns a cursor so the next poll reads only new messages', async () => {
     const bee = new MockBee()
     const alice = makeKeypair()

@@ -265,13 +265,17 @@ export interface MailboxReadResult {
  * @param opts.fromIndex - first index to walk (the host's cursor); default 0
  * @param opts.lookahead - slots probed past a missing one; default {@link END_LOOKAHEAD}, 0 = stop at the first missing slot
  * @param opts.retryIndices - holes from earlier reads to try again first
+ * @param opts.direction - 'received' (default): the contact→me feed. 'sent':
+ *                    my own me→contact feed — same shared secret, so a host
+ *                    that lost its local copy can load what it sent. Its
+ *                    `nextIndex` is also the next index to write.
  */
 export async function readMailbox(
   bee: Bee,
   myPrivateKey: Uint8Array,
   myEthAddress: string,
   contact: Contact,
-  opts: { fromIndex?: number; lookahead?: number; retryIndices?: number[] } = {},
+  opts: { fromIndex?: number; lookahead?: number; retryIndices?: number[]; direction?: 'received' | 'sent' } = {},
 ): Promise<MailboxReadResult> {
   const lookahead = Math.max(0, opts.lookahead ?? END_LOOKAHEAD)
 
@@ -279,9 +283,11 @@ export async function readMailbox(
   const contactPubKeyBytes = hexToBytes(contact.walletPublicKey)
   const sharedSecret = deriveSharedSecret(myPrivateKey, contactPubKeyBytes)
 
-  // Topic: contact→me (contact is the sender/owner)
-  const topic = feedTopic(contact.ethAddress, myEthAddress)
-  const reader = makeFeedReader(bee, topic, contact.ethAddress)
+  // Received: contact→me (contact is the sender/owner). Sent: me→contact (I own it).
+  const sent = opts.direction === 'sent'
+  const owner = sent ? myEthAddress : contact.ethAddress
+  const topic = sent ? feedTopic(myEthAddress, contact.ethAddress) : feedTopic(contact.ethAddress, myEthAddress)
+  const reader = makeFeedReader(bee, topic, owner)
 
   const messages: Message[] = []
   const holes: number[] = []
