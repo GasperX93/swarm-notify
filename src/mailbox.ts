@@ -168,7 +168,6 @@ type ReadResult =
   | { kind: 'hole' }
   | { kind: 'skip' }
   | { kind: 'end' }
-  | { kind: 'unavailable' }
 
 /**
  * Decrypt a single message stored at one feed index.
@@ -191,13 +190,14 @@ async function readMessageAt(
 
   try {
     ;({ reference } = await reader.downloadReference({ index }))
-  } catch (error) {
-    // Only a 404 means no slot at this index — the sender never wrote it (or a
-    // just-written slot hasn't propagated: the next poll picks it up, in
-    // order). Anything else (5xx, timeout, network) means the node couldn't
-    // fetch it right now: the walk stops there and reads it again next time,
-    // instead of mistaking it for the end or hopping over it.
-    return (error as { status?: number } | null)?.status === 404 ? { kind: 'end' } : { kind: 'unavailable' }
+  } catch {
+    // No slot found at this index. The HTTP status can't tell "never written"
+    // from "can't fetch right now": a light node answers a missing chunk with
+    // 500 ("read chunk failed") once its peers are exhausted, and keeps doing
+    // so for a minute without asking again. So any failure is the end here — at
+    // the tail the next poll reads from this index again; a slot hopped as a
+    // gap is reported in `gaps` so hosts can retry it.
+    return { kind: 'end' }
   }
 
   try {
@@ -257,16 +257,10 @@ export interface MailboxReadResult {
   holes: number[]
   /**
    * Indices hopped over as slot-gaps (no slot found there, a later one
-   * exists). Usually never written; on a node that is still warming up a
-   * slot can also be not-found for a while — hosts may retry them like holes.
+   * exists). Usually never written, but a slot the node couldn't fetch at
+   * that moment looks the same — hosts should retry them like holes.
    */
   gaps: number[]
-  /**
-   * False when the walk stopped at a slot the node couldn't fetch (not a
-   * 404): `nextIndex` is that slot, and the read should be repeated before
-   * counting on everything up to the end having been seen.
-   */
-  complete: boolean
 }
 
 /**
@@ -314,7 +308,6 @@ export async function readMailbox(
   const indexes: number[] = []
   const holes: number[] = []
   const gaps: number[] = []
-  let complete = true
   const deliver = (i: number, message: Message) => {
     messages.push(message)
     indexes.push(i)
@@ -328,7 +321,7 @@ export async function readMailbox(
   )
   for (const { i, r } of retried) {
     if (r.kind === 'message') deliver(i, r.message)
-    else if (r.kind === 'hole' || r.kind === 'unavailable') holes.push(i)
+    else if (r.kind === 'hole') holes.push(i)
   }
 
   let index = opts.fromIndex ?? 0
@@ -346,17 +339,11 @@ export async function readMailbox(
       index++
       continue
     }
-    if (result.kind === 'unavailable') {
-      complete = false
-      break
-    }
     if (lookahead === 0) break
 
     // Missing slot — probe the next `lookahead` indices in parallel. If any
     // exists, this was a slot-gap: resume just past the first hit, reporting
-    // the hopped indices as gaps. If none exist, this is the true end. A probe
-    // the node couldn't fetch before the first hit leaves it undecided: stop
-    // here and probe again next time.
+    // the hopped indices as gaps. If none exist, this is the true end.
     const probes = await Promise.all(
       Array.from({ length: lookahead }, (_, k) => readMessageAt(bee, reader, index + 1 + k, sharedSecret)),
     )
@@ -364,17 +351,13 @@ export async function readMailbox(
     if (hit === -1) break
 
     const found = probes[hit]
-    if (found.kind === 'unavailable') {
-      complete = false
-      break
-    }
     for (let k = 0; k <= hit; k++) gaps.push(index + k)
     if (found.kind === 'message') deliver(index + 1 + hit, found.message)
     else if (found.kind === 'hole') holes.push(index + 1 + hit)
     index = index + 1 + hit + 1
   }
 
-  return { messages, indexes, nextIndex: index, holes, gaps, complete }
+  return { messages, indexes, nextIndex: index, holes, gaps }
 }
 
 /**
